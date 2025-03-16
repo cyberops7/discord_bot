@@ -161,7 +161,7 @@ jobs:
       - name: Run Tests in Docker Container
         run: |
           echo "Running unit tests..."
-          make test-docker IMAGE=${{ env.image }} TAG=${{ env.tag }}
+          inv test-docker --image ${{ env.image }} --tag ${{ env.tag }}
 
   # Make sure the container builds and passes vuln scan
   docker-build-scan:
@@ -210,4 +210,4 @@ jobs:
       - name: Scan Docker image
         run: |
           echo "Scanning image..."
-          make scan IMAGE=${{ env.image }} TAG=${{ env.tag }} SCANNER=trivy
+          inv scan IMAGE=${{ env.image }} TAG=${{ env.tag }} SCANNER=trivy
