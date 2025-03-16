@@ -4,6 +4,7 @@
 set -e
 
 # Default values
+IMAGE="ghcr.io/cyberops7/discord_bot"
 REPO_DIR="$(git rev-parse --show-toplevel)"
 SCANNER="trivy"  # Default scanner
 TAG="latest"  # Default tag
@@ -17,11 +18,16 @@ while [[ "$#" -gt 0 ]]; do
     --help|-h)
         echo "Usage: $0 [--tag <image-tag>] [--tarball <file>] [--scanner <scanner-name>]"
         echo "Options:"
-        echo "  --help,     -h             Display this help message and exit."
-        echo "  --scanner,  -s <scanner>   Specify the vulnerability scanner (e.g., 'trivy', 'grype', 'scout', 'snyk') (default: 'trivy')."
-        echo "  --tag,      -t <tag>       Specify the Docker image tag to scan (default: 'latest')."
+        echo "  --help,     -h              Display this help message and exit."
+        echo "  --image,    -i <image name> Specify the Docker image name to scan (default: '${IMAGE}'"
+        echo "  --scanner,  -s <scanner>    Specify the vulnerability scanner (e.g., 'trivy', 'grype', 'scout', 'snyk') (default: '${SCANNER}')."
+        echo "  --tag,      -t <tag>        Specify the Docker image tag to scan (default: '${TAG}')."
         exit 0
         ;;
+    --image|-i)
+          IMAGE="$2"
+          shift 2
+          ;;
     --scanner|-s)
         SCANNER="$2"
         shift 2
@@ -39,7 +45,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Define the full image name
-IMAGE="ghcr.io/cyberops7/discord-bot:$TAG"
+IMAGE="${IMAGE}:${TAG}"
 
 info "Selected scanner: ${SCANNER}"
 info "Targeted image: ${IMAGE}"

@@ -52,7 +52,7 @@ spec:
     spec:
       containers:
         - name: bot
-          image: ghcr.io/cyberops7/discord-bot:test
+          image: ghcr.io/cyberops7/discord_bot:test
           imagePullPolicy: Always
           env:
             - name: BOT_TOKEN

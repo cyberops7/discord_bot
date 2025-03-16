@@ -14,18 +14,18 @@ on:  # yamllint disable-line rule:truthy
         type: string
 
 env:
-  UV_VERSION: "0.6.4"  # Global variable for UV version
+  UV_VERSION: "0.6.6"  # Global variable for UV version
 
 jobs:
   # Run code quality checks
-  check:
+  code-checks:
     name: Lint and Static Analysis
     runs-on: ubuntu-latest
 
     steps:
       # Check out the code repository
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Install uv
       - name: Install uv
@@ -34,15 +34,9 @@ jobs:
           # Install a specific version of uv.
           version: ${{ env.UV_VERSION }}
 
-      # Install Python
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: ".python-version"
-
-      # Install dependencies
+      # Install dependencies (including Python)
       - name: Install the project
-        run: uv sync --dev
+        run: uv sync --frozen --no-group test
 
       # Install trivy
       - name: Manual Trivy Setup
@@ -50,7 +44,7 @@ jobs:
 
       # Run checks
       - name: Run the suite of checks
-        run: make check
+        run: uv run inv check
 
       # Verify that uv.lock is up to date
       - name: Verify uv.lock file
@@ -78,7 +72,7 @@ jobs:
 
       # Check out the pull request code
       - name: Checkout the PR branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
 
@@ -124,38 +118,118 @@ jobs:
           Main: ${{ env.main_version }})."
           fi
 
-  # Make sure the container builds and passes basic tests
-  docker-build-test:
-    name: Build and Test Docker Image
+  # Run unit tests inside a representative Docker image
+  unit-tests:
+    name: Run Unit Tests
     runs-on: ubuntu-latest
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
 
     steps:
       # Check out the code repository
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Capture the PR number as an environment variable
-      - name: Set PR Number
-        run: echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+      # Set up any needed environment variables
+      - name: Set Env Vars
+        run: |
+          echo "Set up env vars"
+          IMAGE_NAME="localhost:5000/${{ github.repository_owner }}/${{ github.event.repository.name }}_test"
+          echo "image=${IMAGE_NAME}" >> $GITHUB_ENV
+          echo "tag=test" >> $GITHUB_ENV
+
+      # Install uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Install a specific version of uv.
+          version: ${{ env.UV_VERSION }}
+
+      # Install dependencies (including Python)
+      - name: Install the project
+        run: uv sync --frozen --no-group test
 
       # Set up Docker Buildx (for multi-platform builds)
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
 
-      # Build the Docker image (without pushing it)
+      # Build the test Docker image (push to local registry)
       - name: Build Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile-test
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.image }}:${{ env.tag }}
+
+      # Run tests inside the test Docker image
+      - name: Run Tests in Docker Container
+        run: |
+          echo "Running unit tests..."
+          uv run inv test-docker --image ${{ env.image }} --tag ${{ env.tag }}
+
+  # Make sure the container builds and passes vuln scan
+  docker-build-scan:
+    name: Build and Scan Docker Image
+    runs-on: ubuntu-latest
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
+    steps:
+      # Check out the code repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Set up any needed environment variables
+      - name: Set Env Vars
+        run: |
+          echo "Set up env vars"
+          IMAGE_NAME="localhost:5000/${{ github.repository_owner }}/${{ github.event.repository.name }}"
+          echo "image=${IMAGE_NAME}" >> $GITHUB_ENV
+          echo "tag=pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+      # Install uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Install a specific version of uv.
+          version: ${{ env.UV_VERSION }}
+
+      # Install dependencies (including Python)
+      - name: Install the project
+        run: uv sync --frozen --no-group test
+
+      # Set up Docker Buildx (for multi-platform builds)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      # Build the Docker image (push to local registry)
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: false
-          tags: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:pr-${{ env.pr_number }}
+          push: true
+          tags: ${{ env.image }}:${{ env.tag }}
 
-      # Test the Docker image
-      # Assumes you have some method to run tests within the container
-      # Example below is generic and can be adapted for your needs
-      - name: Run Tests in Docker Container
+      # Install trivy
+      - name: Manual Trivy Setup
+        uses: aquasecurity/setup-trivy@v0.2.0
+
+      # Run vuln scans on the Docker image
+      - name: Scan Docker image
         run: |
-          echo "make test - TBD"
-        # make test TAG=pr-${PR_NUMBER}
+          echo "Scanning image..."
+          uv run inv scan --image ${{ env.image }} --tag ${{ env.tag }} --scanner trivy

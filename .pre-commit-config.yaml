@@ -1,48 +1,27 @@
 ---
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    # ruff version
-    rev: v0.9.7
+  - repo: local
     hooks:
-      # Run the linter (default is check only, not fix).
-      - id: ruff
-      # Run the formatter.
-      - id: ruff-format
+      - id: run-checks
+        name: Run Checks
+        description: Ensure that all checks pass before committing
+        language: system
+        always_run: true
+        pass_filenames: false
+        entry: uv run inv check
 
-  # Disabled for now - this appears to be broken.
-  # Some fixes are pending the next release.
-  #  - repo: https://github.com/facebook/pyre-check
-  #    rev: v0.9.23
-  #    hooks:
-  #      - id: pyre-check
-
-  - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+  - repo: local
     hooks:
-      - id: shellcheck
-        args:
-          - -x
-        files: ^scripts/.*\.sh$
-
-  - repo: https://github.com/adrienverge/yamllint.git
-    rev: v1.35.1
-    hooks:
-      - id: yamllint
-        args:
-          - --strict
-
-  - repo: https://github.com/mxab/pre-commit-trivy.git
-    rev: v0.14.0
-    hooks:
-      - id: trivyfs-docker
-        args:
-          - --scanners
-          - misconfig,secret,vuln
-          - .  # last arg indicates the path/file to scan
+      - id: run-tests
+        name: Run Unit Tests
+        description: Ensure that unit tests pass before committing
+        language: system
+        always_run: true
+        pass_filenames: false
+        entry: uv run inv test
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    # uv version.
-    rev: 0.6.2
+    rev: 0.6.6  # uv version
     hooks:
-      # Make sure that uv's lock file matches deps in pyproject.toml
       - id: uv-lock
+        description: Ensure uv's lock file matches deps in pyproject.toml

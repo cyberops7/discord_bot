@@ -72,12 +72,15 @@ run_check() {
 
 # Run All Checks
 run_check "Ruff Format" \
-    "uvx ruff format --check \"$REPO_DIR\"" \
-    "uvx ruff format \"$REPO_DIR\""
+    "uv run ruff format --check \"$REPO_DIR\"" \
+    "uv run ruff format \"$REPO_DIR\""
 
 run_check "Ruff Lint" \
-    "uvx ruff check \"$REPO_DIR\"" \
-    "uvx ruff check --fix \"$REPO_DIR\""
+    "uv run ruff check \"$REPO_DIR\"" \
+    "uv run ruff check --fix \"$REPO_DIR\""
+
+run_check "Bandit Security Lint" \
+    "uv run bandit -c pyproject.toml -r ./"
 
 run_check "Pyre Type Check" \
     "pyre check"
@@ -85,6 +88,15 @@ run_check "Pyre Type Check" \
 # Uncomment the following block for Pyright checks if needed
 # run_check "Pyright Type Check" \
 #    "pyright"
+
+run_check "Dockerfile Lint (Hadolint) - \/docker/Dockerfile\"" \
+    "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile"
+
+run_check "Dockerfile Lint (Hadolint) - \"docker/Dockerfile-test\"" \
+    "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile-test"
+
+run_check "Markdown Lint" \
+    "docker run --rm -i -v ./:/data markdownlint/markdownlint ./ .github/"
 
 run_check "ShellCheck Lint" \
     "shellcheck -x \"${REPO_DIR}\"/scripts/*.sh"

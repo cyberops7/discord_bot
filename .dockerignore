@@ -12,6 +12,8 @@ docker/
 kubernetes/
 log/
 scripts/
+tests/
+.coverage
 .dockerignore
 .env
 .gitignore
@@ -22,3 +24,4 @@ scripts/
 .yamllint.yaml
 sample.env
 Makefile
+!docker/test-entrypoint.sh

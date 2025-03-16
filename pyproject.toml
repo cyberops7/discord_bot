@@ -1,6 +1,6 @@
 [project]
-name = "discord-bot"
-version = "0.2.8"
+name = "discord_bot"
+version = "0.2.9"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -15,12 +15,27 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "bandit>=1.8.3",
+    "invoke>=2.2.0",
     "pre-commit>=4.1.0",
     "pyre-check>=0.9.23",
-    "pyright>=1.1.394",
     "ruff>=0.9.7",
     "shellcheck-py>=0.10.0.1",
     "yamllint>=1.35.1",
+]
+test = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+]
+
+[tool.bandit]
+exclude_dirs = [
+    ".venv",
+    "tests",
+]
+skips = [
+    "B104",
 ]
 
 # Note - this is not yet consumed by Pyre.  A recent commit enables it, but there has not been a fresh build of Pyre yet:
@@ -31,6 +46,9 @@ site_package_search_strategy="pep561"
 source_directories = ["."]
 strict = true
 
+[tool.pytest.ini_options]
+addopts = "--cov=lib --cov=main.py --cov-branch --cov-report term"
+
 [tool.ruff]
 indent-width = 4
 line-length = 88
@@ -40,10 +58,13 @@ target-version = "py313"
 select = ["ALL"]
 ignore = [
     "COM812",
-    "D"
+    "D",
+    "FBT001",
+    "FBT002",
 ]
 # COM812 - ruff recommends disabling it for compatibilitiy (and will warn you about it every time)
 # D - docustring checking
+# FBT001, FBT002 - ruff doesn't like boolean positional arguments
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
@@ -52,6 +73,15 @@ unfixable = []
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = [
+    "PLR2004",  # Magic values
+    "S101"      # Use of `assert`
+]
+
 [tool.ruff.format]
 indent-style = "space"
 quote-style = "double"
+
+[tool.uv]
+default-groups = ["dev", "test"]

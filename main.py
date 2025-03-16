@@ -1,4 +1,4 @@
-"""Driver for the garage-discordbot project"""
+"""Driver for the discord_bot project"""
 
 import asyncio
 import logging.handlers

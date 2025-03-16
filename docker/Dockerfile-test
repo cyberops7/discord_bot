@@ -1,6 +1,6 @@
 # Stage 1: Build Stage
 FROM python:3.13-alpine
-LABEL org.opencontainers.image.description="A discord bot built on discord.py with a FastAPI app providing a healthcheck endpoint"
+LABEL org.opencontainers.image.description="A version of the discord_bot image for unit testing"
 LABEL org.opencontainers.image.source=https://github.com/cyberops7/discord_bot
 
 # Set up default env vars
@@ -19,18 +19,25 @@ RUN apk -U upgrade --no-cache && \
     apk add --no-cache \
         bash \
         curl \
-        jq
+        gcc \
+        jq \
+        linux-headers \
+        make \
+        musl-dev
 
 # Install `uv`
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy project files
-COPY ./ $APP_HOME
+# Copy files
+RUN mkdir -p $APP_HOME
+COPY pyproject.toml uv.lock $APP_HOME/
+COPY docker/test-entrypoint.sh $APP_HOME
+RUN chmod +x $APP_HOME/test-entrypoint.sh
 
 # Create application directory and set permissions
-RUN addgroup --system appgroup && \
+RUN mkdir -p $LOG_DIR && \
+    addgroup --system appgroup && \
     adduser --system appuser --ingroup appgroup --home $APP_HOME && \
-    mkdir -p $LOG_DIR && \
     chown -R appuser:appgroup $APP_HOME
 
 # Set working directory
@@ -39,12 +46,9 @@ WORKDIR $APP_HOME
 # Switch to non-root user
 USER appuser
 
-# Create the venv and install runtime dependencies
-RUN uv sync --frozen --no-cache --no-default-groups
+# Create the venv and install both runtime and dev dependencies
+RUN uv sync --frozen --no-cache --no-group dev && \
+    rm $APP_HOME/pyproject.toml $APP_HOME/uv.lock
 
-# Run the bot
-CMD ["uv", "run", "--no-default-groups", "main.py"]
-
-# Placeholder healthcheck until a real one is ready
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -s http://localhost:8080/healthcheck | jq -e '.status == "ok"' > /dev/null || exit 1
+# Run the tests
+ENTRYPOINT ["./test-entrypoint.sh"]

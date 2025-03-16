@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# Exit on error
-set -e
-
 # Import logging functions
 REPO_DIR="$(git rev-parse --show-toplevel)"
 source "${REPO_DIR}/scripts/logger.sh"
@@ -11,6 +8,7 @@ source "${REPO_DIR}/scripts/logger.sh"
 BUILD_DIR=.tmp/
 BUILDER_NAME="temp-multiarch-builder"
 CONTAINER_NAME=bot-test
+TEST_NAME=unit-test-run
 
 # Remove the container if it is running
 if [ "$(docker ps --filter "name=${CONTAINER_NAME}" --filter "status=running" -q)" ]; then
@@ -28,6 +26,25 @@ else
         success "Removed '${CONTAINER_NAME}'"
     else
         info "No stopped container named '${CONTAINER_NAME}' exists."
+    fi
+fi
+
+# Remove the test container if it is running
+if [ "$(docker ps --filter "name=${TEST_NAME}" --filter "status=running" -q)" ]; then
+    info "Container '${TEST_NAME}' is running. Stopping and removing it..."
+    docker stop "${TEST_NAME}"
+    docker rm "${TEST_NAME}"
+    success "Stopped and removed '${TEST_NAME}'"
+else
+    info "No running container named '${TEST_NAME}' exists."
+
+    # Remove the container if it exists, but is stopped
+    if [ "$(docker ps -a --filter "name=${TEST_NAME}" --filter "status=exited" -q)" ]; then
+        info "Container '${TEST_NAME}' exists, but is stopped. Removing it..."
+        docker rm "${TEST_NAME}"
+        success "Removed '${TEST_NAME}'"
+    else
+        info "No stopped container named '${TEST_NAME}' exists."
     fi
 fi
 
