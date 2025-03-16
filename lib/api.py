@@ -1,9 +1,10 @@
 import logging
+from pathlib import Path
 
 import uvicorn
 from discord import ClientUser
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from lib.bot import DiscordBot
@@ -23,6 +24,13 @@ async def start_fastapi_server(bot: DiscordBot, port: int = 8080) -> None:
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_config=None)  # noqa: S104
     server = uvicorn.Server(config)
     await server.serve()
+
+
+# Explicit favicon.ico route to serve the favicon
+@app.get("/favicon.ico")
+async def favicon() -> FileResponse:
+    favicon_path = Path("static") / "favicon.ico"
+    return FileResponse(favicon_path)
 
 
 class HealthCheckResponse(BaseModel):

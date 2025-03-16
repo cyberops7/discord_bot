@@ -70,12 +70,6 @@ you can run:
 pre-commit run --all-files
 ```
 
-To run a single check (e.g. ruff) against all files (not just changed files):
-
-```shell
- pre-commit run --all-files shellcheck
-```
-
 ### Markdownlint Notes
 
 To see information about the various linting checks,

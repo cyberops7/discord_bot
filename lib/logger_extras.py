@@ -142,7 +142,7 @@ class AccessLogFormatter(AccessFormatter):
         datefmt: str | None = None,
         style: Literal["%", "{", "$"] = "{",
         log_colors: dict[str, str] | None = None,
-        reset: bool = True,  # noqa: FBT001, FBT002
+        reset: bool = True,
     ) -> None:
         # Initialize AccessFormatter
         fmt_clean = fmt.rstrip() if fmt else None

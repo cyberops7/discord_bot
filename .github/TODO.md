@@ -9,6 +9,8 @@
 
 ## Documentation
 
+- [ ] Move CONTRIBUTING and TODO into a docs/ directory
+
 ### CONTRIBUTING
 
 - [ ] Pre-commit hooks
@@ -22,6 +24,8 @@
    - Add `ACTIONS_STEP_DEBUG` set to `true` to Actions variable if debugging
      workflows
 - [ ] Update the `version` in `pyproject.toml`
+- [ ] make -> invoke
+- [ ] invoke shell completion (source <(inv --print-completion-script zsh))
 
 ### README
 
@@ -41,6 +45,8 @@
 
 - [x] Add new `test` dep group to `uv` for unit testing packages so we don't
       have to install all the linting deps into the test image
+- [x] Change from makefile to Python Invoke
+- [ ] Use trivy as a container instead of an installed binary?
 
 ### Makefile / Core Functions
 
@@ -86,17 +92,20 @@
 - [x] check project version
 - [x] Dockerfile linting (hadolint)
 - [x] Makefile linting (makefilelint)
-- [x] Just have it run `make check` and `make test`.  No more duplicating.
+- [x] Just have it run `make check` and `make test`. No more duplicating.
 
 ### GitHub Actions
 
-- Submitted PRs
-   - [x] Lint/check code
-   - [x] Build image
-   - [x] Run automated/unit tests
-   - [ ] Scan image
-- Accepted PRs
-   - [x] Build and publish image to ghcr
+#### Submitted PRs
+
+- [x] Lint/check code
+- [x] Build image
+- [x] Run automated/unit tests
+- [x] Scan image
+
+#### Accepted PRs
+
+- [x] Build and publish image to ghcr
 
 ## Logging
 
@@ -108,7 +117,7 @@
 - [ ] Add more logging everywhere
 - [x] Tune discord's noisy logs
 
-### API
+## API
 
 - [x] Logging config
 - [x] API logs to separate file
@@ -122,7 +131,10 @@
 - [x] Move to a `docker/` directory
 - [x] A docker compose file
 - [x] Expose/map the API port
-- [ ] Run as non-root user
+- [x] Run as non-root user
+- [ ] ~~Have `uv` install Python, just use non-python base image
+      (Dockerfile and Dockerfile-test)~~ - no aarch64-musl pre-built version
+      of python is availabe to `uv`.
 
 ## Kubernetes
 
@@ -131,12 +143,12 @@
 - [ ] Pull those into or from internal k3s repo (TBD)
 - [ ] [Trivy config scanning](https://trivy.dev/v0.57/docs/scanner/misconfiguration/)
 
-### Unit Testing
+## Unit Testing
 
 - [x] Choose a testing platform
 - [x] Run tests in *-test Docker image
 
-#### Code Coverage
+### Code Coverage
 
 - [x] utils.py
 - [ ] main.py

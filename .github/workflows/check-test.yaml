@@ -14,7 +14,7 @@ on:  # yamllint disable-line rule:truthy
         type: string
 
 env:
-  UV_VERSION: "0.6.5"  # Global variable for UV version
+  UV_VERSION: "0.6.6"  # Global variable for UV version
 
 jobs:
   # Run code quality checks
@@ -44,7 +44,7 @@ jobs:
 
       # Run checks
       - name: Run the suite of checks
-        run: make check
+        run: inv check
 
       # Verify that uv.lock is up to date
       - name: Verify uv.lock file

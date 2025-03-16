@@ -16,8 +16,8 @@ info "Repo directory: ${REPO_DIR}"
 # Define context and Dockerfile relative to the script location
 CONTEXT="${REPO_DIR}"
 DOCKERFILE="${REPO_DIR}/docker/Dockerfile"
-IMAGE_NAME=ghcr.io/cyberops7/discord_bot
-IMAGE_NAME_TEST=ghcr.io/cyberops7/discord_bot_test
+IMAGE_NAME="ghcr.io/cyberops7/discord_bot"
+IMAGE_NAME_TEST="${IMAGE_NAME}_test"
 
 # Default values
 CACHE_FLAG="--no-cache"     # Default behavior is to disable caching
@@ -37,11 +37,16 @@ while [[ "$#" -gt 0 ]]; do
             echo "Options:"
             echo "  --help, -h            Show this help message and exit."
             echo "  --cache               Enable Docker caching (default is no cache)."
+            echo "  --image, -i           Specify the image name to build (default ${IMAGE_NAME}"
             echo "  --local               Export the built image from the buildx builder to the local Docker daemon."
             echo "  --push                Enable pushing the image to the registry."
             echo "  --tag, -t <tag>       Specify the image tag (default: 'test-YYYYMMDD')."
             echo "  --test                Build the version of the image for unit testing."
             exit 0
+            ;;
+        --image|-i)
+            IMAGE_NAME="$2"
+            shift 2
             ;;
         --local)
             LOCAL_FLAG="--output type=oci,dest=.tmp/oci-image.tar"
@@ -62,7 +67,7 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             ;;
         --test)
-            DOCKERFILE="${REPO_DIR}/docker/Dockerfile-test"
+            DOCKERFILE="${DOCKERFILE}-test"
             IMAGE_NAME=${IMAGE_NAME_TEST}
             shift
             ;;

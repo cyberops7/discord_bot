@@ -16,6 +16,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "bandit>=1.8.3",
+    "invoke>=2.2.0",
     "pre-commit>=4.1.0",
     "pyre-check>=0.9.23",
     "ruff>=0.9.7",
@@ -57,10 +58,13 @@ target-version = "py313"
 select = ["ALL"]
 ignore = [
     "COM812",
-    "D"
+    "D",
+    "FBT001",
+    "FBT002",
 ]
 # COM812 - ruff recommends disabling it for compatibilitiy (and will warn you about it every time)
 # D - docustring checking
+# FBT001, FBT002 - ruff doesn't like boolean positional arguments
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
