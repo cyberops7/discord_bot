@@ -232,4 +232,4 @@ jobs:
       - name: Scan Docker image
         run: |
           echo "Scanning image..."
-          uv run inv scan IMAGE=${{ env.image }} TAG=${{ env.tag }} SCANNER=trivy
+          uv run inv scan --image ${{ env.image }} --tag ${{ env.tag }} --scanner trivy
