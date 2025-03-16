@@ -8,7 +8,7 @@ repos:
         language: system
         always_run: true
         pass_filenames: false
-        entry: inv check
+        entry: uv run inv check
 
   - repo: local
     hooks:
@@ -18,7 +18,7 @@ repos:
         language: system
         always_run: true
         pass_filenames: false
-        entry: inv test
+        entry: uv run inv test
 
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.6.6  # uv version

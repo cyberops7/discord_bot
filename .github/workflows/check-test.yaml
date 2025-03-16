@@ -44,7 +44,7 @@ jobs:
 
       # Run checks
       - name: Run the suite of checks
-        run: inv check
+        run: uv run inv check
 
       # Verify that uv.lock is up to date
       - name: Verify uv.lock file
@@ -161,7 +161,7 @@ jobs:
       - name: Run Tests in Docker Container
         run: |
           echo "Running unit tests..."
-          inv test-docker --image ${{ env.image }} --tag ${{ env.tag }}
+          uv run inv test-docker --image ${{ env.image }} --tag ${{ env.tag }}
 
   # Make sure the container builds and passes vuln scan
   docker-build-scan:
@@ -210,4 +210,4 @@ jobs:
       - name: Scan Docker image
         run: |
           echo "Scanning image..."
-          inv scan IMAGE=${{ env.image }} TAG=${{ env.tag }} SCANNER=trivy
+          uv run inv scan IMAGE=${{ env.image }} TAG=${{ env.tag }} SCANNER=trivy
