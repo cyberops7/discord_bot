@@ -47,6 +47,7 @@
       have to install all the linting deps into the test image
 - [x] Change from makefile to Python Invoke
 - [ ] Use trivy as a container instead of an installed binary?
+- [ ] Cache uv/venv in check-test workflow
 
 ### Makefile / Core Functions
 
