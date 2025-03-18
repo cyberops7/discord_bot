@@ -89,7 +89,6 @@ def fix(c: Context) -> None:
 @task
 def help(c: Context) -> None:  # noqa: A001
     """List available Invoke tasks."""
-    logger.info("Available commands:")
     c.run("invoke --list")
 
 

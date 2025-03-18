@@ -9,6 +9,7 @@ __pycache__/
 .tmp/
 .venv/
 docker/
+docs/
 kubernetes/
 log/
 scripts/
