@@ -52,6 +52,8 @@
 - [x] Add new `test` dep group to `uv` for unit testing packages so we don't
       have to install all the linting deps into the test image
 - [x] Change from makefile to Python Invoke
+- [ ] Add version check to pre-commit
+- [ ] Fix pre-commit uv.lock to only check, not change uv.lock
 - [ ] Use trivy as a container instead of an installed binary?
 - [ ] Cache uv/venv in check-test workflow
 - [ ] Move dot files into a .conf directory?
