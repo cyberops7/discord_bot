@@ -9,23 +9,29 @@
 
 ## Documentation
 
-- [ ] Move CONTRIBUTING and TODO into a docs/ directory
+- [x] Move CONTRIBUTING and TODO into a docs/ directory
 
 ### CONTRIBUTING
 
-- [ ] Pre-commit hooks
+- [x] Pre-commit hooks
 - [ ] Using the DiscordBot class
-- [ ] Add new modules into `lib/`
+- [x] Add new modules into `lib/`
 - [ ] Add hyperlinks to tools table
 - Testing
-   - [ ] How to run locally
-   - `make build-test`
-   - `make test-docker`
-   - Add `ACTIONS_STEP_DEBUG` set to `true` to Actions variable if debugging
+   - [x] How to run locally
+   - [x] `invoke build-test`
+   - [x] `invoke test-docker`
+   - [x] Add `ACTIONS_STEP_DEBUG` set to `true` to Actions variable if debugging
      workflows
-- [ ] Update the `version` in `pyproject.toml`
-- [ ] make -> invoke
-- [ ] invoke shell completion (source <(inv --print-completion-script zsh))
+- [x] Update the `version` in `pyproject.toml`
+- [x] make -> invoke
+- [x] invoke shell completion (source <(inv --print-completion-script zsh))
+- [ ] Add brief notes for each code quality tool
+   - [ ] bandit
+   - [ ] hadolint
+   - [ ] shellcheck
+   - [ ] trivy
+   - [ ] yamllint
 
 ### README
 
@@ -48,6 +54,12 @@
 - [x] Change from makefile to Python Invoke
 - [ ] Use trivy as a container instead of an installed binary?
 - [ ] Cache uv/venv in check-test workflow
+- [ ] Move dot files into a .conf directory?
+- [ ] `pyre analyze`? `pyre infer`? `pyre persistent`?
+- [ ] markdownlint -> markdownlint-cli2?
+   - The current solution seems poorly maintained, is missing features like
+     inline exclusions.
+- [ ] Keep an eye on pyrefly as a replacement for pyre
 
 ### Makefile / Core Functions
 

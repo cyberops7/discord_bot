@@ -93,7 +93,7 @@ docker compose -f docker/docker-compose.yaml up -d
 
 ### Kubernetes
 
-A sample manifest is provided in [kubernetes/](kubernetes/).
+A sample manifest is provided in [kubernetes/](./kubernetes/).
 There are a few things that you'll need to customize:
 
 - How you create your Kubernetes Secret for the bot token. The sample manifest
@@ -123,11 +123,11 @@ kubectl apply -k kubernetes/
 
 ## Contributing
 
-For details on contributing to the project, see [CONTRIBUTING](.github/CONTRIBUTING.md).
+For details on contributing to the project, see [CONTRIBUTING](docs/CONTRIBUTING.md).
 
 ## ToDos
 
-To see planned features and improvements, check out [TODO](.github/TODO.md).
+To see planned features and improvements, check out [TODO](docs/TODO.md).
 
 Please submit Issues here in GitHub to track suggestions/bug fixes, etc.
 Once the initial backlog of ToDos are wrapped up, I plan to deprecate TODO.md
