@@ -51,17 +51,17 @@ async def main() -> None:
         await bot.start(bot_token)
     except asyncio.CancelledError:
         logger.info("FastAPI server task cancelled.")
+    except KeyboardInterrupt:
+        logger.info("Shutting down gracefully...")
+        raise
     finally:
         # Ensure FastAPI server task is finalized when bot stops
         api_task.cancel()
         try:
             await api_task
         except asyncio.CancelledError:
-            logger.info("FastAPI server task cancelled.")
+            logger.info("FastAPI server task cancelled during cleanup.")
 
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Shutting down gracefully...")
+if __name__ == "__main__":  # pragma: no cover
+    asyncio.run(main())

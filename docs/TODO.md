@@ -23,6 +23,8 @@
    - [x] `invoke test-docker`
    - [x] Add `ACTIONS_STEP_DEBUG` set to `true` to Actions variable if debugging
      workflows
+   - [ ] how to run a single test: `uv run pytest tests/test_main.py::test_main_bot_token_not_set`
+     or `uv run pytest -k test_main_bot_token_not_set`
 - [x] Update the `version` in `pyproject.toml`
 - [x] make -> invoke
 - [x] invoke shell completion (source <(inv --print-completion-script zsh))

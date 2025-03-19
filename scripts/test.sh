@@ -12,10 +12,6 @@ USE_DOCKER=false
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
-        --docker|-d)
-            USE_DOCKER=true
-            shift
-            ;;
         --help|-h)
             echo "Usage: $0 [--docker | -d]"
             echo "Options:"
@@ -24,6 +20,10 @@ while [[ "$#" -gt 0 ]]; do
             echo "  --tag <tag>, -t             Specify a custom tag for the Docker image."
 
             exit 0
+            ;;
+        --docker|-d)
+            USE_DOCKER=true
+            shift
             ;;
         --image|-i)
             if [[ -n "$2" && "$2" != -* ]]; then
@@ -68,5 +68,5 @@ else
     # Run tests directly in the local environment using uv
     which python3
     info "Running pytest..."
-    uv run pytest
+    COLUMNS=$(tput cols) uv run pytest
 fi
