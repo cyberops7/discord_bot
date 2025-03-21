@@ -6,11 +6,26 @@ from discord import ClientUser
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
+from starlette.datastructures import State as StarletteState
 
 from lib.bot import DiscordBot
 
 logger: logging.Logger = logging.getLogger(__name__)
-app = FastAPI()  # Create the FastAPI app
+
+
+# Custom subclass of Starlette/FastAPI State
+class AppState(StarletteState):
+    """Custom state object for FastAPI.  This is needed to keep type checkers happy."""
+
+    bot: DiscordBot
+
+    def __init__(self, bot: DiscordBot | None) -> None:
+        super().__init__()
+        self.bot: DiscordBot | None = bot
+
+
+app: FastAPI = FastAPI()  # Create the FastAPI app
+app.state = AppState(bot=None)
 
 
 async def start_fastapi_server(bot: DiscordBot, port: int = 8080) -> None:

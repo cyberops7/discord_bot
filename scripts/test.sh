@@ -69,4 +69,8 @@ else
     which python3
     info "Running pytest..."
     COLUMNS=$(tput cols) uv run pytest
+
+    note "You can access the HTML coverage report one of two ways:"
+    note "     In the terminal, run: 'open htmlcov/index.html'"
+    note "     Paste into your browser: file:///${REPO_DIR}/htmlcov/index.html"
 fi

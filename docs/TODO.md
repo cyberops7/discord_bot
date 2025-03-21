@@ -140,6 +140,7 @@
 - [x] API logs to separate file
 - [ ] Uvicorn reverse proxy settings
 - [ ] Uvicorn settings - workers, loop, etc.
+- [ ] /status - make it smarter with different return codes in case the bot is unhealthy
 
 ## Docker
 
@@ -151,7 +152,7 @@
 - [x] Run as non-root user
 - [ ] ~~Have `uv` install Python, just use non-python base image
       (Dockerfile and Dockerfile-test)~~ - no aarch64-musl pre-built version
-      of python is availabe to `uv`.
+      of python is available to `uv`.
 
 ## Kubernetes
 
@@ -168,9 +169,9 @@
 ### Code Coverage
 
 - [x] utils.py
-- [ ] main.py
-- [ ] api.py
+- [x] main.py
+- [x] api.py
 - [ ] bot.py
-- [ ] confi_parser.py
+- [ ] config_parser.py
 - [ ] logger_extras.py
 - [ ] logger_setup.py

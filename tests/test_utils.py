@@ -6,16 +6,31 @@ from pytest_mock import MockerFixture
 from lib.utils import ensure_valid_port, validate_port
 
 
-def test_ensure_valid_port_valid() -> None:
-    assert ensure_valid_port(80) == 80
-    assert ensure_valid_port(65535) == 65535
-    assert ensure_valid_port(0) == 0
-    assert ensure_valid_port(5555) == 5555
+@pytest.mark.parametrize(
+    "port",
+    [
+        0,
+        80,
+        5555,
+        65535,
+    ],
+)
+def test_ensure_valid_port_valid(port: int) -> None:
+    assert ensure_valid_port(port) == port
 
 
-def test_ensure_valid_port_below_min() -> None:
-    with pytest.raises(ValueError, match="Port -1 is not in the valid range 0-65535"):
-        ensure_valid_port(-1)
+@pytest.mark.parametrize(
+    "port",
+    [
+        -1,
+        65536,
+    ],
+)
+def test_ensure_valid_port_out_of_range(port: int) -> None:
+    with pytest.raises(
+        ValueError, match=f"Port {port} is not in the valid range 0-65535"
+    ):
+        ensure_valid_port(port)
 
 
 def test_ensure_valid_port_above_max() -> None:
@@ -25,28 +40,40 @@ def test_ensure_valid_port_above_max() -> None:
         ensure_valid_port(65536)
 
 
-def test_ensure_valid_port_invalid_type() -> None:
+@pytest.mark.parametrize(
+    "invalid_port",
+    [
+        "I'm a string",
+        50.5,
+    ],
+)
+def test_ensure_valid_port_invalid_type(invalid_port: str | float) -> None:
     with pytest.raises(
-        TypeError, match="Port must be an integer, but got str: invalid_port"
+        TypeError,
+        match=f"Port must be an integer, but got "
+        f"{type(invalid_port).__name__}: {invalid_port}",
     ):
-        ensure_valid_port("invalid_port")  # pyre-ignore[6]: Expected 'int', got 'str'
-    with pytest.raises(TypeError, match="Port must be an integer, but got float: 50.5"):
-        ensure_valid_port(50.5)  # pyre-ignore[6]: Expected 'int', got 'float'
+        ensure_valid_port(invalid_port)  # pyre-ignore[6]
 
 
-def test_validate_port_valid() -> None:
+def test_validate_port_valid(mocker: MockerFixture) -> None:
+    mocker.patch("lib.utils.ensure_valid_port", return_value=80)
     assert validate_port(80) == 80
 
 
 def test_validate_port_invalid_type(mocker: MockerFixture) -> None:
+    bad_port = "cool port"
     mock_exit = mocker.patch("sys.exit")
-    mock_logger = mocker.patch("lib.utils.logger.exception")
+    mock_logger = mocker.patch("lib.utils.logger")
 
-    validate_port("cool port")  # pyre-ignore[6]: Expected 'int', got 'str'
+    validate_port(bad_port)  # pyre-ignore[6]: Expected 'int', got 'str'
     mock_exit.assert_called_once_with(1)
-    mock_logger.assert_called_once_with(
-        "Targeted port is not an integer: %s", "cool port"
-    )
+    expected_logs = [
+        mocker.call.debug("Validating targeted port: %s...", bad_port),
+        mocker.call.exception("Targeted port is not an integer: %s", bad_port),
+        mocker.call.error("Exiting due to invalid port."),
+    ]
+    mock_logger.assert_has_calls(expected_logs, any_order=False)
 
 
 def test_validate_port_invalid_value(mocker: MockerFixture) -> None:

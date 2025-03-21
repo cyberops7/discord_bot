@@ -81,7 +81,7 @@ def eval_ast(expr: str) -> int | float:
                 raise ValueError(unary_msg)
             return ALLOWED_UNARY_OPERATORS[type(node.op)](_eval(node.operand))
         expr_msg = f"Unsupported expression: {type(node).__name__}"
-        raise ValueError(expr_msg)
+        raise TypeError(expr_msg)
 
     # Parse the expression into an AST and evaluate it
     try:
@@ -95,42 +95,54 @@ def eval_ast(expr: str) -> int | float:
 
 
 def resolve_env_token(token: str) -> str | None:
-    try:
-        # Extract environment variable name and default value
-        parts = token.replace("@env", "").strip().split(",")
-        env_var_name = parts[0].strip()
-        default_value = parts[1].strip() if len(parts) > 1 else None
-    except IndexError as e:
-        msg = f"Invalid @env token format: {token}"
-        raise ValueError(msg) from e
-    else:
-        return os.getenv(env_var_name, default_value)
+    if "@env" not in token:
+        msg = f"'@env' not found in token: {token}"
+        raise ValueError(msg)
+
+    # Extract environment variable name and default value
+    parts = token.replace("@env", "").strip().split(",")
+    env_var_name = parts[0].strip()
+    default_value = parts[1].strip() if len(parts) > 1 else None
+
+    if not env_var_name:
+        msg = f"Environment variable name missing in @env token: {token}"
+        raise ValueError(msg)
+
+    return os.getenv(env_var_name, default_value)
 
 
 def resolve_format_token(token: str) -> str | None:
     try:
+        if "@format" not in token:
+            msg = f"'@format' not found in token: {token}"
+            raise ValueError(msg)
+
         # Extract the inner string for @format
         formatted_string = token.replace("@format", "").strip()
 
         # Find and resolve all nested tokens using a regex
         tokens = re.findall(r"{(.*?)}", formatted_string)
+        if not tokens:
+            msg = "No tokens found in @format token"
+            raise ValueError(msg)
         resolved_tokens = {token: resolve_value(token) for token in tokens}
 
         # Replace each nested token with its resolved value
         for tkn, resolved_value in resolved_tokens.items():
-            if resolved_value is None:
-                continue  # Skip tokens wth `None` values
             formatted_string = formatted_string.replace(
-                f"{{{tkn}}}", str(resolved_value)
+                f"{{{tkn}}}", str(resolved_value) if resolved_value else ""
             )
     except Exception as e:
-        msg = f"Invalid @format token format: {token}. Error: {e}"
+        msg = f"Invalid @format token: {token}. Error: {e}"
         raise ValueError(msg) from e
     else:
         return formatted_string
 
 
 def resolve_math_token(token: str) -> int | float | None:
+    if "@math" not in token:
+        msg = f"'@math' not found in token: {token}"
+        raise ValueError(msg)
     try:
         # Remove the @math prefix and evaluate the expression
         math_expression = token.replace("@math", "").strip()

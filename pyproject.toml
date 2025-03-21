@@ -24,6 +24,7 @@ dev = [
     "yamllint>=1.35.1",
 ]
 test = [
+    "httpx>=0.28.1",
     "pytest>=8.3.5",
     "pytest-asyncio>=0.25.3",
     "pytest-cov>=6.0.0",
@@ -72,10 +73,12 @@ ignore = [
     "D",
     "FBT001",
     "FBT002",
+    "TRY301",
 ]
 # COM812 - ruff recommends disabling it for compatibilitiy (and will warn you about it every time)
 # D - docustring checking
 # FBT001, FBT002 - ruff doesn't like boolean positional arguments
+# TRY301 - No raise inside try
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
@@ -86,6 +89,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = [
+    "PLR0913",  # Arg count in function def
     "PLR2004",  # Magic values
     "S101"      # Use of `assert`
 ]
