@@ -55,6 +55,7 @@ addopts = """
     --cov=lib
     --cov=main
     --cov-branch
+    --cov-fail-under=100
     --cov-report html
     --cov-report term-missing
     --verbose
