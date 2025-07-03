@@ -6,6 +6,7 @@ __pycache__
 .ruff_cache
 .tmp
 .venv
+htmlcov
 log
 .coverage
 .env

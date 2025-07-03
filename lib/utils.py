@@ -31,4 +31,5 @@ def validate_port(port: int) -> int:
         logger.exception("Targeted port is not an integer: %s", port)
     except ValueError:
         logger.exception("Targeted port is not valid: %s", port)
+    logger.error("Exiting due to invalid port.")
     sys.exit(1)

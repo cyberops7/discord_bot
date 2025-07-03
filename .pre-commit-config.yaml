@@ -21,7 +21,7 @@ repos:
         entry: uv run invoke test
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.6.6  # uv version
+    rev: 0.7.18  # uv version
     hooks:
       - id: uv-lock
         description: Ensure uv's lock file matches deps in pyproject.toml

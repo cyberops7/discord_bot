@@ -6,6 +6,7 @@ import logging.config
 import logging.handlers
 from logging import Logger
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -13,8 +14,8 @@ from lib import config_parser
 from lib.logger_extras import custom_log_record_factory
 
 # change this to DEBUG if debugging logger initialization
-logging.basicConfig(level=logging.INFO)
 logger: Logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def configure_logger(file_path: str = "conf/logger.yaml") -> None:
@@ -24,32 +25,29 @@ def configure_logger(file_path: str = "conf/logger.yaml") -> None:
     # Set the global log record factory to use CustomLogRecord
     logging.setLogRecordFactory(custom_log_record_factory)
 
-    success: bool = False
     try:
-        yaml_path = Path(file_path)
+        yaml_path: Path = Path(file_path)
         with Path.open(yaml_path, encoding="utf-8") as yaml_file:
             try:
-                yaml_config = yaml.safe_load(yaml_file)
+                yaml_config: dict[str, Any] = yaml.safe_load(yaml_file)
                 logger.debug("Read YAML config: %s", yaml_config)
                 yaml_config_resolved = config_parser.resolve_values(yaml_config)
                 logger.debug("Resolved YAML config: %s", yaml_config_resolved)
                 logging.config.dictConfig(yaml_config_resolved)
                 logger.info("Logging configuration loaded from YAML file.")
                 logger.debug("Logging configuration: %s", yaml_config_resolved)
-
-                start_queue_listeners()
-
-                success = True
             except yaml.YAMLError:
                 logger.exception("Error parsing YAML file.")
-            except (ValueError, TypeError, KeyError, AttributeError):
+            except (AttributeError, KeyError, TypeError, ValueError):
                 logger.exception("Error in logging configuration.")
-    except (FileNotFoundError, PermissionError, IsADirectoryError, OSError):
+            else:
+                start_queue_listeners()
+                return
+    except (FileNotFoundError, IsADirectoryError, OSError, PermissionError):
         logger.exception("Error reading logging configuration file.")
-    if not success:
-        # Apply basic logging as a fallback
-        logging.basicConfig(level=logging.DEBUG)
-        logger.info("Default logging configuration applied.")
+    # Apply basic logging as a fallback
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Default logging configuration applied.")
 
 
 def get_all_handlers() -> set[logging.Handler]:
@@ -76,6 +74,10 @@ def start_queue_listeners() -> None:
     logger.info("Checking for queue handler listeners...")
     all_handlers = get_all_handlers()
 
+    if not all_handlers:
+        logger.warning("No handlers found.")
+        return
+
     for handler_name in all_handlers:  # Iterate through all registered handlers
         # Extract handler instance (some entries in `_handlerList` are weakrefs)
         try:
@@ -89,7 +91,7 @@ def start_queue_listeners() -> None:
 
             if not isinstance(
                 handler, logging.Handler
-            ):  # Ensure it's a logging.Handler
+            ):  # Ensure it is type logging.Handler
                 logger.warning("Invalid handler type: %s", type(handler))
                 continue
         except ReferenceError as e:

@@ -48,10 +48,12 @@ class CustomLogRecord(logging.LogRecord):
         pathname: str,
         lineno: int,
         msg: object,
-        args: tuple[object, ...],
-        exc_info: tuple[None, None, None]
-        | tuple[type[BaseException], BaseException, TracebackType | None]
-        | None = None,
+        args: tuple[object, ...] | None,
+        exc_info: (
+            tuple[None, None, None]
+            | tuple[type[BaseException], BaseException, TracebackType | None]
+            | None
+        ) = None,
         func: str | None = None,
         sinfo: str | None = None,
     ) -> None:
@@ -69,7 +71,7 @@ class CustomLogRecord(logging.LogRecord):
 
     def __str__(self) -> str:
         """
-        Provide a debug-friendly string representation of the log record
+        Provide a debug-friendly string representation of the log record,
         including the custom attributes.
         """
         return (
@@ -175,7 +177,6 @@ class AccessLogFormatter(AccessFormatter):
                     record.method = "unknown"
                     record.path = "unknown"
                     record.http_version = "1.1"
-                    record.status_code = 0
 
             # Only assign additional attrs if we have a status_code
             if isinstance(record.status_code, int):
@@ -215,10 +216,10 @@ class JSONFormatter(logging.Formatter):
 
     @override
     def format(self, record: logging.LogRecord) -> str:
-        message = self._prepare_log_dict(record)
+        message = self.prepare_log_dict(record)
         return json.dumps(message, default=str)
 
-    def _prepare_log_dict(
+    def prepare_log_dict(
         self, record: logging.LogRecord
     ) -> dict[str, str | int | float]:
         always_fields = {
@@ -235,7 +236,7 @@ class JSONFormatter(logging.Formatter):
 
         message = {
             key: msg_val
-            if (msg_val := always_fields.pop(val, None)) is not None
+            if (msg_val := always_fields.get(val)) is not None
             else getattr(record, val)
             for key, val in self.fmt_keys.items()
         }

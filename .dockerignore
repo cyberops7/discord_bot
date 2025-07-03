@@ -10,6 +10,7 @@ __pycache__/
 .venv/
 docker/
 docs/
+htmlcov/
 kubernetes/
 log/
 scripts/
