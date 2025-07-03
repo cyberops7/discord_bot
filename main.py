@@ -55,7 +55,7 @@ async def main() -> None:
         logger.info("Shutting down gracefully...")
         raise
     finally:
-        # Ensure FastAPI server task is finalized when bot stops
+        # Ensure the FastAPI server task is finalized when the bot stops
         api_task.cancel()
         try:
             await api_task

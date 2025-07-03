@@ -134,7 +134,7 @@ def test(c: Context) -> None:
 
 
 @task
-def test_docker(c: Context, image: str = DEFAULT_IMAGE, tag: str = DEFAULT_TAG) -> None:
+def test_docker(c: Context, image: str = DEFAULT_IMAGE, tag: str = DEFAULT_TAG) -> None:  # noqa: PT028
     """Run pytest unit tests in Docker."""
     logger.info("Running pytest unit tests in Docker '%s:%s'", image, tag)
     c.run(f"bash {get_scripts_dir(c)}/test.sh --docker --image {image} --tag {tag}")

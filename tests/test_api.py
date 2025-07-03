@@ -1,8 +1,10 @@
 """Unit tests for api.py"""
 
 from pathlib import Path
-from typing import cast
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from unittest.mock import MagicMock
 
 import pytest
 import uvicorn
@@ -36,7 +38,7 @@ def test_bot(mocker: MockerFixture, request: pytest.FixtureRequest) -> DiscordBo
         bot.user = mocker.MagicMock(spec=ClientUser)
         bot.user.__str__.return_value = user
 
-    return cast(DiscordBot, bot)
+    return cast("DiscordBot", bot)
 
 
 @pytest.fixture
@@ -89,7 +91,7 @@ def test_route_healthcheck(
     expected_message: str,
     status_code: int,
 ) -> None:
-    test_bot_mock: MagicMock = cast(MagicMock, test_bot)
+    test_bot_mock: MagicMock = cast("MagicMock", test_bot)
     test_bot_mock.is_ready.return_value = bot_ready
     response = test_api_client.get("/healthcheck")
 

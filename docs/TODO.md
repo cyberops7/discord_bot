@@ -2,10 +2,13 @@
 
 ## Bot Features
 
+- [ ] #mousetrap handling
+  - Ban users who post
+  - Remove all their recent posts
 - [ ] DM new members on join
 - [ ] Link resources for common topics
-   - Slash commands?
-   - Buttons/dropdowns?
+  - Slash commands?
+  - Buttons/dropdowns?
 
 ## Documentation
 
@@ -18,22 +21,22 @@
 - [x] Add new modules into `lib/`
 - [ ] Add hyperlinks to tools table
 - Testing
-   - [x] How to run locally
-   - [x] `invoke build-test`
-   - [x] `invoke test-docker`
-   - [x] Add `ACTIONS_STEP_DEBUG` set to `true` to Actions variable if debugging
-     workflows
-   - [ ] how to run a single test: `uv run pytest tests/test_main.py::test_main_bot_token_not_set`
-     or `uv run pytest -k test_main_bot_token_not_set`
+  - [x] How to run locally
+    - [x] `invoke build-test`
+    - [x] `invoke test-docker`
+    - [x] Add `ACTIONS_STEP_DEBUG` set to `true` to Actions variable if debugging
+      workflows
+    - [ ] how to run a single test: `uv run pytest tests/test_main.py::test_main_bot_token_not_set`
+      or `uv run pytest -k test_main_bot_token_not_set`
 - [x] Update the `version` in `pyproject.toml`
 - [x] make -> invoke
 - [x] invoke shell completion (source <(inv --print-completion-script zsh))
 - [ ] Add brief notes for each code quality tool
-   - [ ] bandit
-   - [ ] hadolint
-   - [ ] shellcheck
-   - [ ] trivy
-   - [ ] yamllint
+  - [ ] bandit
+  - [ ] hadolint
+  - [ ] shellcheck
+  - [ ] trivy
+  - [ ] yamllint
 
 ### README
 
@@ -43,9 +46,9 @@
 - [ ] While tailored to Jim's Garage and my own dev environment, feel free to
       fork, etc.
 - [ ] How to run your own instance of the bot - docker, kubernetes
-   - [ ] For docker compose, you'll need to put your .env file in the same
-         directory as your compose file. The current sample.env in the docker
-         dir is a symlink to the one in the repository root.
+  - [ ] For docker compose, you'll need to put your .env file in the same
+        directory as your compose file. The current sample.env in the docker
+        dir is a symlink to the one in the repository root.
 
 ## CI/CD
 
@@ -61,46 +64,46 @@
 - [ ] Move dot files into a .conf directory?
 - [ ] `pyre analyze`? `pyre infer`? `pyre persistent`?
 - [ ] markdownlint -> markdownlint-cli2?
-   - The current solution seems poorly maintained, is missing features like
-     inline exclusions.
+  - The current solution seems poorly maintained, is missing features like
+    inline exclusions.
 - [ ] Keep an eye on pyrefly as a replacement for pyre
 
 ### Makefile / Core Functions
 
 - [x] Add ARG information to target help comments
 - `make build`
-   - [ ] add support for CACHE flag
+  - [ ] add support for CACHE flag
 - `make check`
-   - [x] Run linters and checkers
-   - [x] `make fix` as a fix-enabled version of `make check`
-   - [x] Add yaml linting (yamllint)
-   - [x] Add shellcheck
-   - [ ] Change `make check` to call pre-commit commands?
-         Could be a good way to prevent drift...
-   - [ ] Compare/test between Pyre and Pyright
-   - [ ] Add hadolint
+  - [x] Run linters and checkers
+  - [x] `make fix` as a fix-enabled version of `make check`
+  - [x] Add yaml linting (yamllint)
+  - [x] Add shellcheck
+  - [ ] Change `make check` to call pre-commit commands?
+        Could be a good way to prevent drift...
+  - [ ] Compare/test between Pyre and Pyright
+  - [ ] Add hadolint
 - `make clean`
-   - [x] Clean up old Docker containers and buildx builders
-   - [x] Run as a prerequisite for `make run`, `make build`
+  - [x] Clean up old Docker containers and buildx builders
+  - [x] Run as a prerequisite for `make run`, `make build`
 - `make deps`
-   - Check that dev dependencies are installed
-   - [ ] hadolint
+  - Check that dev dependencies are installed
+  - [ ] hadolint
 - `make publish`
-   - [x] Make it a variant `build`, just with an extra flag to push the image
+  - [x] Make it a variant `build`, just with an extra flag to push the image
 - `make run`
-   - Run the bot container locally
+  - Run the bot container locally
 - `make scan`
-   - [ ] Get other scanners working
+  - [ ] Get other scanners working
 - `make test`
-   - [x] add support for flag to run tests inside container
-      - That will need to include having uv install deps
+  - [x] add support for flag to run tests inside container
+    - That will need to include having uv install deps
 
 ### Pre-commit Hooks
 
 - [x] Ruff (check + format)
 - [ ] ~~Pyre~~
-   - ~~There are some recent fixes to the pre-commit-hooks,
-     but there has not been a release yet that includes them~~
+  - ~~There are some recent fixes to the pre-commit-hooks,
+    but there has not been a release yet that includes them~~
 - [x] Trivy fs
 - [x] uv lock
 - [x] yamllint
@@ -165,6 +168,8 @@
 
 - [x] Choose a testing platform
 - [x] Run tests in *-test Docker image
+- [ ] Add support for `inv test --file test-file-here`
+- [ ] Add support for `inv test --test specific-test-here (-k pytest filter)`
 
 ### Code Coverage
 
@@ -172,6 +177,6 @@
 - [x] main.py
 - [x] api.py
 - [ ] bot.py
-- [ ] config_parser.py
+- [x] config_parser.py
 - [ ] logger_extras.py
 - [ ] logger_setup.py
