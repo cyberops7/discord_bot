@@ -52,7 +52,7 @@ If all goes well, you should see logs like the following:
 
 ### Available tags
 
-Each image will be published with 4 tags: `latest`, the major version, the
+Each image will be published with four tags: `latest`, the major version, the
 minor version, and the patch version. For example, for a version of 1.3.12,
 the tags would be:
 
@@ -64,7 +64,7 @@ the tags would be:
 This gives you flexibility in how discrete you want to be in choosing the
 version of the bot that you run. I strongly discourage using `latest`. You
 never know what might get written over that tag, and the next time you restart
-your container there would be a decent chance of pulling a broken or
+your container, there would be a decent chance of pulling a broken or
 unexpected image.
 
 ### Docker
@@ -93,7 +93,7 @@ docker compose -f docker/docker-compose.yaml up -d
 
 ### Kubernetes
 
-A sample manifest is provided in [kubernetes/](./kubernetes/).
+A sample manifest is provided in [kubernetes/](./kubernetes).
 There are a few things that you'll need to customize:
 
 - How you create your Kubernetes Secret for the bot token. The sample manifest
@@ -107,7 +107,7 @@ that.
 
 The namespace also includes a `projectId` annotation unique to my Rancher
 instance to put the namespace into a project automatically.  Update it for
-yours, or just remove it.
+yours or just remove it.
 
 To test the manifest generation using Kustomize:
 
@@ -130,5 +130,5 @@ For details on contributing to the project, see [CONTRIBUTING](docs/CONTRIBUTING
 To see planned features and improvements, check out [TODO](docs/TODO.md).
 
 Please submit Issues here in GitHub to track suggestions/bug fixes, etc.
-Once the initial backlog of ToDos are wrapped up, I plan to deprecate TODO.md
+Once the initial backlog of ToDos is wrapped up, I plan to deprecate TODO.md
 and work off of GitHub Issues.
