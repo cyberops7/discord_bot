@@ -1,20 +1,12 @@
 import logging
 import sys
-from collections.abc import Awaitable, Callable
 from logging import Logger
-
-import pytest
 
 # TODO @cyberops7: move PORT_MIN/MAX to config
 PORT_MIN = 0
 PORT_MAX = 65535
 
 logger: Logger = logging.getLogger(__name__)
-
-
-def async_test(func: Callable[..., Awaitable[None]]) -> Callable[..., Awaitable[None]]:
-    """Wrapper for pytest.mark.asyncio that handles Pyre type issues"""
-    return pytest.mark.asyncio(func)  # type: ignore[56]
 
 
 def ensure_valid_port(port: int) -> int:

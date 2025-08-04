@@ -13,7 +13,7 @@ from pytest_mock import MockerFixture
 
 from lib.bot import DiscordBot, LogContext
 from lib.config import config
-from lib.utils import async_test
+from tests.utils import async_test
 
 
 def create_mock_user(name: str, user_id: int) -> MagicMock:
@@ -320,14 +320,13 @@ class TestDiscordBot:
         self, mocker: MockerFixture, discord_bot: DiscordBot, mock_config: MagicMock
     ) -> None:
         """Test _get_log_channel when get_channel returns None."""
-        # Arrange
-        mocker.patch.object(discord_bot, "get_channel", return_value=None)
+        mocked_get_channel = mocker.patch.object(
+            discord_bot, "get_channel", return_value=None
+        )
 
-        # Act
         result = await discord_bot._get_log_channel()
 
-        # Assert
-        discord_bot.get_channel.assert_called_once_with(mock_config.CHANNELS.BOT_LOGS)
+        mocked_get_channel.assert_called_once_with(mock_config.CHANNELS.BOT_LOGS)
         assert result is None
 
     @async_test
@@ -478,7 +477,6 @@ class TestDiscordBot:
         self, mocker: MockerFixture, mock_channel: MagicMock, mock_user: MagicMock
     ) -> None:
         """Test sending a log text with user and channel details."""
-        # Arrange
         mock_send = mocker.patch.object(mock_channel, "send", AsyncMock())
         timestamp = datetime.datetime.now(
             cast("datetime.tzinfo", config.TIMEZONE)
@@ -495,10 +493,8 @@ class TestDiscordBot:
             channel=mock_channel,
         )
 
-        # Act
         result = await DiscordBot._send_log_text(context)
 
-        # Assert
         mock_send.assert_called_once()
         log_message = mock_send.call_args[0][0]
         assert f"[{timestamp}] [WARNING]" in log_message

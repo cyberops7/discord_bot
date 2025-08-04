@@ -26,7 +26,7 @@ from lib.api import (
     lifespan,
 )
 from lib.bot import DiscordBot
-from lib.utils import async_test
+from tests.utils import async_test
 
 
 @pytest.fixture(autouse=True)
