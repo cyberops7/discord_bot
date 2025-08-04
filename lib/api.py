@@ -1,8 +1,11 @@
+import asyncio
 import logging
+import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-import uvicorn
-from discord import ClientUser
+from discord import ClientUser, Intents
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -24,21 +27,48 @@ class AppState(StarletteState):
         self.bot: DiscordBot | None = bot
 
 
-app: FastAPI = FastAPI()  # Create the FastAPI app
-app.state = AppState(bot=None)
+@asynccontextmanager
+async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
+    logger.info("Initializing Discord bot...")
+
+    # Initialize the bot with the necessary intents
+    intents = Intents.all()
+    bot = DiscordBot(intents=intents)
+
+    # Retrieve the bot token from environment variables
+    logger.info("Retrieving bot token...")
+    bot_token = os.getenv("BOT_TOKEN")
+    if not bot_token:
+        msg = "BOT_TOKEN is required to start the bot."
+        logger.error(msg)
+        raise RuntimeError(msg)
+
+    # Start the bot
+    logger.info("Starting Discord bot...")
+    # Start the bot asynchronously (in the background) to not block 'app's lifespan
+    bot_task = asyncio.create_task(bot.start(bot_token))
+
+    # Save the bot instance to FastAPI's state
+    api_app.state = AppState(bot=bot)
+
+    try:
+        # Yield control back to FastAPI to start up the server
+        yield
+
+    finally:
+        logger.info("Shutting down Discord bot...")
+
+        # Gracefully close the bot
+        await bot.close()
+
+        # Ensure the bot task is cleaned up
+        await bot_task
+        logger.info("Discord bot closed.")
 
 
-async def start_fastapi_server(bot: DiscordBot, port: int = 8080) -> None:
-    """
-    Start the FastAPI server using asyncio and provide the bot instance
-    to the API
-    """
-    # Store the bot instance in FastAPI's state object
-    app.state.bot = bot
-
-    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_config=None)  # noqa: S104
-    server = uvicorn.Server(config)
-    await server.serve()
+# pyre-ignore[6]: FastAPI expects AbstractAsyncContextManager,
+# but we are using the asynccontextmanager decorator (per FastAPI docs)
+app: FastAPI = FastAPI(lifespan=lifespan)  # Create the FastAPI app
 
 
 # Explicit favicon.ico route to serve the favicon

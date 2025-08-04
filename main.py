@@ -1,67 +1,43 @@
 """Driver for the discord_bot project"""
 
-import asyncio
 import logging.handlers
 import os
-import sys
 from logging import Logger
 
-import discord
-from discord import Intents
+import uvicorn
 from dotenv import load_dotenv
 
-from lib.api import start_fastapi_server
-from lib.bot import DiscordBot
+from lib.api import app
 from lib.logger_setup import configure_logger
 from lib.utils import validate_port
 
 logger: Logger = logging.getLogger(__name__)
 
 
-async def main() -> None:
+def main() -> None:
     """Main driver function"""
     # Load .env contents into system ENV
     # !! Vars defined in .env will override any default env var values !!
+    logger.info("Loading environment variables from .env file (if present)...")
     load_dotenv(override=True)
 
     # Set up logging
+    logger.info("Configuring logger...")
     configure_logger()
 
     # Validate the port number
     api_port = validate_port(int(os.getenv("API_PORT", "8080")))
 
-    # Retrieve bot token
-    logger.info("Retrieving bot token...")
-    if not (bot_token := os.getenv("BOT_TOKEN")):
-        logger.error("BOT_TOKEN is not set")
-        sys.exit(1)
-
-    # Initialize the bot
-    logger.info("Initializing bot...")
-    intents: Intents = discord.Intents.all()
-    bot: DiscordBot = DiscordBot(intents=intents)
-
-    # Create a task for the FastAPI server
+    # Start the FastAPI app using Uvicorn. This also starts the bot.
     logger.info("Starting FastAPI server...")
-    api_task = asyncio.create_task(start_fastapi_server(bot=bot, port=api_port))
-
-    # Run the Discord bot
-    logger.info("Starting Discord bot...")
-    try:
-        await bot.start(bot_token)
-    except asyncio.CancelledError:
-        logger.info("FastAPI server task cancelled.")
-    except KeyboardInterrupt:
-        logger.info("Shutting down gracefully...")
-        raise
-    finally:
-        # Ensure the FastAPI server task is finalized when the bot stops
-        api_task.cancel()
-        try:
-            await api_task
-        except asyncio.CancelledError:
-            logger.info("FastAPI server task cancelled during cleanup.")
+    # TODO @cyberops7: use os.getenv("API_HOST", "127.0.0.1") instead of 0.0.0.0
+    uvicorn.run(
+        app,
+        host="0.0.0.0",  # Bind to all network interfaces # noqa: S104
+        port=api_port,
+        log_config=None,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
-    asyncio.run(main())
+    main()

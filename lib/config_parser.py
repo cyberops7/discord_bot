@@ -1,5 +1,5 @@
 """
-Parse a yaml config file and resolve special tokens to allow for dynamic configuration.
+Parse a YAML config file and resolve special tokens to allow for dynamic configuration.
 """
 
 import ast

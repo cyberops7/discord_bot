@@ -105,10 +105,6 @@ I am using a `.gitignore`'d Kustomize manifest to add my correct 1Password
 vault path. A sample Kustomize manifest is included if you are curious about
 that.
 
-The namespace also includes a `projectId` annotation unique to my Rancher
-instance to put the namespace into a project automatically.  Update it for
-yours or just remove it.
-
 To test the manifest generation using Kustomize:
 
 ```shell

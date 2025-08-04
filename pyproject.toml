@@ -1,6 +1,6 @@
 [project]
 name = "discord_bot"
-version = "0.2.11"
+version = "0.3.0"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -30,6 +30,7 @@ test = [
     "pytest>=8.3.5",
     "pytest-asyncio>=0.25.3",
     "pytest-cov>=6.0.0",
+    "pytest-env>=1.1.5",
     "pytest-mock>=3.14.0",
 ]
 
@@ -67,6 +68,14 @@ addopts = """
     """
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+env = [
+    "PYTEST_THEME=emacs",
+    "PYTEST_THEME_MODE=dark",
+]
+#
+#[tool.pytest_env]
+#PYTEST_THEME = "emacs"
+#PYTEST_THEME_MODE = "dark"
 
 [tool.ruff]
 indent-width = 4
@@ -80,11 +89,15 @@ ignore = [
     "D",
     "FBT001",
     "FBT002",
+    "FIX002",
+    "TD003",
     "TRY301",
 ]
 # COM812 - ruff recommends disabling it for compatibilitiy (and will warn you about it every time)
 # D - docustring checking
 # FBT001, FBT002 - ruff doesn't like boolean positional arguments
+# FIX002 - ruff doesn't like TO-DO's
+# TD003 - ruff wants issue links for TO-DO's
 # TRY301 - No raise inside try
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -95,10 +108,15 @@ unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.per-file-ignores]
+"lib/config.py" = [
+    "ANN401",   # Allow dynamically typed expressions
+    "ERA001"    # False positive commented out code (pyre annotations)
+]
 "tests/*.py" = [
     "PLR0913",  # Arg count in function def
     "PLR2004",  # Magic values
-    "S101"      # Use of `assert`
+    "S101",     # Use of `assert`
+    "SLF001"    # Accessing private member
 ]
 
 [tool.ruff.format]

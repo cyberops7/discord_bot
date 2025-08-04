@@ -85,7 +85,7 @@ development tasks. For ease of use, these scripts are mapped to various `invoke`
 tasks.
 
 `invoke help` will give you the most up-to-date state of available tasks,
-but this is a snapshot (which may or may not be up-to-date):
+but this is a snapshot (which may or may not be up to date):
 
 ```text
 ❯ invoke help
