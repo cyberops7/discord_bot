@@ -52,6 +52,7 @@ spec:
     spec:
       containers:
         - name: bot
+          # TODO @cyberops7: figure out how to ignore AVD-KSV-0125 (Trivy)
           image: ghcr.io/cyberops7/discord_bot:v0.2.11
           imagePullPolicy: Always
           env:
