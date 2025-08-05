@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
-from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from dataclasses import dataclass, field
+from datetime import datetime, tzinfo  # noqa: F401 RUF100 - used in cast() as string
 from typing import cast
 
 import discord
@@ -11,6 +11,8 @@ import discord
 from lib.config import config
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+EmbedFieldDict = dict[str, bool | str | None] | dict[str, bool | str]
 
 
 @dataclass
@@ -25,6 +27,7 @@ class LogContext:
     embed: bool = False
     user: discord.Member | discord.ClientUser | None = None
     channel: discord.TextChannel | None = None
+    extra_embed_fields: list[EmbedFieldDict] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.color:
@@ -54,6 +57,22 @@ class DiscordBot(discord.Client):
     """Discord bot class"""
 
     default_log_channel: discord.TextChannel | None = None
+
+    async def on_ready(self) -> None:
+        """Called when the bot is ready"""
+        logger.info("We have logged in as %s", self.user)
+
+        # Initialize the global default_log_channel
+        # global default_log_channel
+        DiscordBot.default_log_channel = await self._get_log_channel()
+        if not DiscordBot.default_log_channel:
+            logger.warning(
+                "Could not find log channel with ID %s", config.CHANNELS.BOT_LOGS
+            )
+
+        await self.log_bot_event(
+            level="INFO", event="Bot Startup", details=f"Version {config.VERSION}"
+        )
 
     async def close(self) -> None:
         await asyncio.wait_for(
@@ -114,6 +133,15 @@ class DiscordBot(discord.Client):
             )
 
         embed.add_field(name="Level", value=context.level, inline=True)
+
+        for embed_field in context.extra_embed_fields:
+            logger.debug("Parsing extra embed field: %s", field)
+            if embed_field.get("value"):
+                embed.add_field(
+                    name=embed_field.get("name", "Missing embed name"),
+                    value=embed_field.get("value", "Missing embed value"),
+                    inline=bool(embed_field.get("inline", False)),
+                )
 
         logger.info("Sending embed log message: %s", embed.to_dict())
 
@@ -202,13 +230,13 @@ class DiscordBot(discord.Client):
     ) -> discord.Message | None:
         """Log a bot-related event"""
         context = LogContext(
-            log_message=f"Bot event: {event}",
+            log_message=f"**Bot event:** {event}",
             level=level,
             action="Bot Event",
             embed=True,
         )
         if details:
-            context.log_message += f"\nDetails: {details}"
+            context.log_message += f"\n**Details:** {details}"
         if log_channel:
             context.log_channel = log_channel
 
@@ -216,25 +244,44 @@ class DiscordBot(discord.Client):
 
     async def log_moderation_action(  # noqa: PLR0913
         self,
-        moderator: discord.Member | discord.ClientUser | None,
-        target: discord.Member,
+        moderator: discord.Member | discord.ClientUser,
+        target: discord.Member | discord.ClientUser,
         action: str,
         reason: str = "No reason provided",
         extra_log_channel: discord.TextChannel | None = None,
         channel: discord.TextChannel | None = None,
+        level: str = "WARNING",
+        message: discord.Message | None = None,
     ) -> discord.Message | None:
         """
         Log a moderation action.
         Specify log_channel to duplicate log to a public channel
         """
+        message_snippet = None
+        if message:
+            max_msg_length = 500
+            message_snippet = (
+                f"{message.content[:max_msg_length]}"
+                f"{'...' if len(message.content) > max_msg_length else ''}"
+            )
+
         context = LogContext(
-            log_message=f"**{action}** performed on {target.mention}\n"
-            f"**Reason:** {reason}",
-            level="WARNING",
             action=f"Moderation: {action}",
+            log_message=(
+                f"**{action}** performed on {target.mention} by {moderator.mention}\n"
+                f"**Reason:** {reason}"
+            ),
             embed=True,
-            user=moderator,
+            user=target,
             channel=channel,
+            level=level,
+            extra_embed_fields=[
+                {
+                    "name": "Message",
+                    "value": message_snippet if message else None,
+                    "inline": False,
+                },
+            ],
         )
         if extra_log_channel:
             context.log_channel = extra_log_channel
@@ -277,12 +324,13 @@ class DiscordBot(discord.Client):
         logger.debug("User role IDs: %s", user_role_ids)
         return bool(privileged_role_ids & user_role_ids)
 
-    async def ban_spammer(self, message: discord.Message) -> None:
+    async def ban_spammer(self, ban_reason: str, message: discord.Message) -> None:
         """
         Ban users due to spam.
         Check user privileges so the bot does not ban admins, mods, etc.
 
         Args:
+            ban_reason: The reason for the ban
             message: The message that triggered the spam detection
         """
         if not isinstance(message.author, discord.Member):
@@ -304,7 +352,7 @@ class DiscordBot(discord.Client):
         logger.info(
             "Processing potential spam from user %s (%s) in channel #%s",
             user.display_name,
-            user.id,
+            user,
             channel.name,
         )
 
@@ -313,7 +361,7 @@ class DiscordBot(discord.Client):
             logger.info(
                 "User %s (%s) has privileged role, not banning",
                 user.display_name,
-                user.id,
+                user,
             )
 
             # Log the privileged user attempt
@@ -334,7 +382,7 @@ class DiscordBot(discord.Client):
                             )
                         }"
                     ),
-                    level="CRITICAL",
+                    level="WARNING",
                     action="Spam Detection - Privileged User",
                     embed=True,
                     user=user,
@@ -347,36 +395,37 @@ class DiscordBot(discord.Client):
         logger.warning(
             "Banning user %s (%s) for spam in channel #%s",
             user.display_name,
-            user.id,
+            user,
             channel.name,
         )
 
         # Ban the user
-        ban_reason = f"Spam detected in #{channel.name}"
         try:
             await user.ban(reason=ban_reason, delete_message_days=1)
             logger.warning(
                 "Successfully banned user %s (%s) for spam",
                 user.display_name,
-                user.id,
+                user,
             )
 
             # Log the successful ban
             # TODO @cyberops7: also log to #general-chat
             await self.log_moderation_action(
-                moderator=self.user,  # Bot as moderator
+                moderator=cast("discord.ClientUser", self.user),  # Bot as moderator
                 target=user,
                 action="Ban",
-                reason=f"Spam detected. "
-                f"Deleted messages from {self.user} from the last day.",
+                reason=f"{ban_reason}\nDeleted messages from {user.display_name}"
+                f"({user}) from the last day.",
                 channel=channel,
+                level="CRITICAL",
+                message=message,
             )
 
         except discord.Forbidden:
             logger.exception(
                 "Bot lacks permission to ban user %s (%s)",
                 user.display_name,
-                user.id,
+                user,
             )
 
             # Log the permission error
@@ -418,22 +467,6 @@ class DiscordBot(discord.Client):
                 )
             )
 
-    async def on_ready(self) -> None:
-        """Called when the bot is ready"""
-        logger.info("We have logged in as %s", self.user)
-
-        # Initialize the global default_log_channel
-        # global default_log_channel
-        DiscordBot.default_log_channel = await self._get_log_channel()
-        if not DiscordBot.default_log_channel:
-            logger.warning(
-                "Could not find log channel with ID %s", config.CHANNELS.BOT_LOGS
-            )
-
-        await self.log_bot_event(
-            level="INFO", event="Bot Startup", details=f"Version {config.VERSION}"
-        )
-
     async def on_message(self, message: discord.Message) -> None:
         """Called when a message is received"""
         # Ignore messages from the bot itself
@@ -442,8 +475,14 @@ class DiscordBot(discord.Client):
 
         # Ban spammers - no one is supposed to post to #mousetrap
         if message.channel.id == config.CHANNELS.MOUSETRAP:
-            logger.warning("Received message from %s in #mousetrap", message.author)
-            await self.ban_spammer(message)
+            logger.warning(
+                "Received message from %s (%s) in #mousetrap: %s",
+                message.author.display_name,
+                message.author,
+                message.content,
+            )
+            ban_reason = "Message detected in #mousetrap."
+            await self.ban_spammer(ban_reason, message)
 
         if message.channel.id == config.CHANNELS.BOT_PLAYGROUND:
             # Respond to messages starting with "hello"
