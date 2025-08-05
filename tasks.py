@@ -15,7 +15,8 @@ logger: Logger = logging.getLogger(__name__)
 
 # Default variables
 _SCRIPTS_DIR_CACHE: dict[str, str] = {}
-DEFAULT_IMAGE: str = "ghcr.io/cyberops7/discord_bot_test"
+DEFAULT_IMAGE: str = "ghcr.io/cyberops7/discord_bot"
+DEFAULT_TEST_IMAGE: str = "ghcr.io/cyberops7/discord_bot_test"
 DEFAULT_TAG: str = "test"
 DEFAULT_SCANNER: str = "trivy"
 
@@ -134,7 +135,11 @@ def test(c: Context) -> None:
 
 
 @task
-def test_docker(c: Context, image: str = DEFAULT_IMAGE, tag: str = DEFAULT_TAG) -> None:  # noqa: PT028
+def test_docker(
+    c: Context,
+    image: str = DEFAULT_TEST_IMAGE,  # noqa: PT028 no default args for "tests"
+    tag: str = DEFAULT_TAG,  # noqa: PT028 no default args for "tests"
+) -> None:
     """Run pytest unit tests in Docker."""
     logger.info("Running pytest unit tests in Docker '%s:%s'", image, tag)
     c.run(f"bash {get_scripts_dir(c)}/test.sh --docker --image {image} --tag {tag}")
