@@ -1,11 +1,11 @@
 [project]
 name = "discord_bot"
-version = "0.3.0"
+version = "0.4.0"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "click<8.2",  # 8.2+ breaks pyre-check
+    "click<8.2", # 8.2+ breaks pyre-check
     "colorlog>=6.9.0",
     "discord>=2.3.2",
     "dotenv>=0.9.9",
@@ -20,7 +20,6 @@ dev = [
     "invoke>=2.2.0",
     "pre-commit>=4.1.0",
     "pyre-check>=0.9.23",
-    "pyrefly>=0.22.2",
     "ruff>=0.12.1",
     "shellcheck-py>=0.10.0.1",
     "yamllint>=1.35.1",
@@ -29,7 +28,7 @@ test = [
     "httpx>=0.28.1",
     "pytest>=8.3.5",
     "pytest-asyncio>=0.25.3",
-    "pytest-cov>=6.0.0",
+    "pytest-cov>=6.2.1",
     "pytest-env>=1.1.5",
     "pytest-mock>=3.14.0",
 ]

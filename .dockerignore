@@ -19,6 +19,9 @@ tests/
 .dockerignore
 .env
 .gitignore
+.hadolint.yaml
+.markdownlint.rb
+.mdlrc
 .pre-commit-config.yaml
 .pyre_configuration
 .shellcheckrc
