@@ -494,3 +494,51 @@ class DiscordBot(discord.Client):
                 logger.info("Received 'ping' from %s", message.author)
                 await message.channel.send("Pong")
                 return
+
+    async def on_member_join(self, member: discord.Member) -> None:
+        """Called when a member joins the server"""
+        logger.info("Member %s (%s) joined the server", member.display_name, member)
+        rules_channel = self.get_channel(config.CHANNELS.RULES)
+
+        # Type check and ensure it is a TextChannel (makes pyre happy)
+        if not rules_channel or not isinstance(rules_channel, discord.TextChannel):
+            logger.warning(
+                "Could not find rules channel with ID %s or it is not a TextChannel",
+                config.CHANNELS.RULES,
+            )
+            # Fallback message without channel mention
+            embed = discord.Embed(
+                title="Welcome to the Jim's Garage server!",
+                description=(
+                    f"Welcome to the server, {member.mention}! "
+                    f"Please read the rules in the rules channel. "
+                    f"You will need to react to the first post in that channel with "
+                    f":white_check_mark: to gain access to the rest of the channels.\n"
+                    f"<:logo_small1:1181558525202284585>"
+                ),
+                color=discord.Color.blue(),
+            )
+        else:
+            embed = discord.Embed(
+                title="Welcome to the Jim's Garage server!",
+                description=(
+                    f"Welcome to the server, {member.mention}! "
+                    f"Please read the rules in {rules_channel.mention}. "
+                    f"You will need to react to the first post in that channel with "
+                    f":white_check_mark: to gain access to the rest of the channels.\n"
+                    f"<:logo_small1:1181558525202284585>"
+                ),
+                color=discord.Color.blue(),
+            )
+
+        try:
+            await member.send(embed=embed)
+        except discord.Forbidden:
+            logger.warning(
+                "Could not send welcome message to %s - DMs may be disabled",
+                member.display_name,
+            )
+        except discord.HTTPException as e:
+            logger.warning(
+                "Failed to send welcome message to %s: %s", member.display_name, e
+            )

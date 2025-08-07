@@ -27,6 +27,7 @@ def create_mock_user(name: str, user_id: int) -> MagicMock:
     user.id = user_id
     user.mention = f"<@{user_id}>"
     user.roles = []  # Set the role(s) as necessary in each test
+    user.send = AsyncMock()
     user.__str__ = MagicMock(return_value=name)
     return user
 
@@ -66,6 +67,7 @@ def mock_config(mocker: MockerFixture) -> MagicMock:
     mock_config.CHANNELS.BOT_LOGS = 101
     mock_config.CHANNELS.BOT_PLAYGROUND = 123
     mock_config.CHANNELS.MOUSETRAP = 456
+    mock_config.CHANNELS.RULES = 789
     mock_config.ROLES.ADMIN = 11111
     mock_config.ROLES.JIMS_GARAGE = 22222
     mock_config.ROLES.MOD = 33333
@@ -1512,3 +1514,126 @@ class TestDiscordBot:
         await discord_bot.on_message(mock_message)
 
         mock_message.channel.send.assert_called_once_with("Pong")
+
+    @pytest.mark.usefixtures("mock_config")
+    async def test_on_member_join(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_channel: MagicMock,
+        mock_user: MagicMock,
+    ) -> None:
+        """Test the on_member_join method with a valid rules channel"""
+        mocked_get_channel = mocker.patch.object(
+            discord_bot, "get_channel", return_value=mock_channel
+        )
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.on_member_join(mock_user)
+
+        mocked_get_channel.assert_called_once()
+        mock_user.send.assert_called_once()
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "INFO"
+        assert (
+            caplog.records[0].message
+            == f"Member {mock_user.display_name} ({mock_user}) joined the server"
+        )
+
+    @pytest.mark.usefixtures("mock_config")
+    async def test_on_member_join_no_rules_channel(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_user: MagicMock,
+    ) -> None:
+        """Test the on_member_join method when the #rules channel is not found"""
+        # Mock get_channel to return None (channel not found)
+        mocked_get_channel = mocker.patch.object(
+            discord_bot, "get_channel", return_value=None
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await discord_bot.on_member_join(mock_user)
+
+        mocked_get_channel.assert_called_once()
+
+        # Verify the embed was created without channel mention
+        # We need to inspect the call arguments to verify the embed content
+        mock_user.send.assert_called_once()
+        call_args = mock_user.send.call_args[1]
+        embed = call_args["embed"]
+
+        # Check that the embed has the expected content
+        assert embed.title == "Welcome to the Jim's Garage server!"
+        assert "Welcome to the server" in embed.description
+        assert "rules channel" in embed.description  # Generic reference without mention
+        assert embed.color == discord.Color.blue()
+
+        # Verify warning was logged
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "WARNING"
+        assert "Could not find rules channel" in caplog.records[0].message
+
+    @pytest.mark.usefixtures("mock_config")
+    async def test_on_member_join_dm_forbidden(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_channel: MagicMock,
+        mock_user: MagicMock,
+    ) -> None:
+        """Test the on_member_join method when DM fails with a Forbidden exception"""
+        # Mock get_channel to return a valid channel
+        mocker.patch.object(discord_bot, "get_channel", return_value=mock_channel)
+
+        # Mock member.send to raise discord.Forbidden
+        mock_user.send.side_effect = discord.Forbidden(
+            response=MagicMock(), message="Cannot send messages to this user"
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await discord_bot.on_member_join(mock_user)
+
+        # Verify send was attempted
+        mock_user.send.assert_called_once()
+
+        # Verify warning was logged
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "WARNING"
+        assert "Could not send welcome message" in caplog.records[0].message
+        assert "DMs may be disabled" in caplog.records[0].message
+
+    @pytest.mark.usefixtures("mock_config")
+    async def test_on_member_join_dm_http_exception(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_channel: MagicMock,
+        mock_user: MagicMock,
+    ) -> None:
+        """Test the on_member_join method when DM fails with HTTPException"""
+        # Mock get_channel to return a valid channel
+        mocker.patch.object(discord_bot, "get_channel", return_value=mock_channel)
+
+        # Create an HTTP exception with a specific error message
+        http_error = "Internal Server Error"
+        mock_user.send.side_effect = discord.HTTPException(
+            response=MagicMock(), message=http_error
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await discord_bot.on_member_join(mock_user)
+
+        # Verify send was attempted
+        mock_user.send.assert_called_once()
+
+        # Verify warning was logged
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "WARNING"
+        assert "Failed to send welcome message" in caplog.records[0].message
+        assert http_error in caplog.records[0].message
