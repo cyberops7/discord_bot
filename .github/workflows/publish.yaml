@@ -42,6 +42,10 @@ jobs:
           echo "minor_version=${MAJOR_VERSION}.${MINOR_VERSION}" >> $GITHUB_ENV
           echo "patch_version=$VERSION" >> $GITHUB_ENV
 
+      # Set SOURCE_DATE_EPOCH to the current timestamp for accurate build dates
+      - name: Set build timestamp
+        run: |
+          echo "SOURCE_DATE_EPOCH=$(date +%s)" >> $GITHUB_ENV
 
       # Set up Docker Buildx (for multi-platform builds)
       - name: Set up Docker Buildx

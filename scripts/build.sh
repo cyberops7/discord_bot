@@ -23,6 +23,7 @@ IMAGE_NAME_TEST="${IMAGE_NAME}_test"
 CACHE_FLAG="--no-cache"     # Default behavior is to disable caching
 LOCAL_FLAG=""               # Default is no local import into the Docker daemon
 PUSH_FLAG=""                # Default behavior is to build, but not push
+SINGLE_PLATFORM_FLAG=""     # Default is multi-platform build
 TAG="test-$(date +%Y%m%d)"  # Default image tag
 
 # Parse arguments
@@ -40,6 +41,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "  --image, -i           Specify the image name to build (default ${IMAGE_NAME}"
             echo "  --local               Export the built image from the buildx builder to the local Docker daemon."
             echo "  --push                Enable pushing the image to the registry."
+            echo "  --single              Build for local architecture only (instead of multi-platform)."
             echo "  --tag, -t <tag>       Specify the image tag (default: 'test-YYYYMMDD')."
             echo "  --test                Build the version of the image for unit testing."
             exit 0
@@ -54,6 +56,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --push)
             PUSH_FLAG="--push"
+            shift
+            ;;
+        --single)
+            SINGLE_PLATFORM_FLAG="true"
             shift
             ;;
         --tag|-t)
@@ -82,6 +88,29 @@ done
 info "Building image: ${IMAGE_NAME} from ${DOCKERFILE}"
 info "Using tag: ${TAG}"
 
+# Determine platform architecture
+if [[ -n "$SINGLE_PLATFORM_FLAG" ]]; then
+    # Get local architecture and convert to Docker platform format
+    LOCAL_ARCH=$(uname -m)
+    case "$LOCAL_ARCH" in
+        x86_64)
+            PLATFORM="linux/amd64"
+            ;;
+        aarch64|arm64)
+            PLATFORM="linux/arm64"
+            ;;
+        *)
+            error "Unsupported architecture: $LOCAL_ARCH"
+            exit 1
+            ;;
+    esac
+    info "Building for single platform: ${PLATFORM}"
+else
+    PLATFORM="linux/amd64,linux/arm64"
+    info "Building for multiple platforms: ${PLATFORM}"
+fi
+
+
 # Set up the Docker buildx builder for multiarch builds
 divider
 info "Setting up Docker buildx builder..."
@@ -107,7 +136,7 @@ info "Constructing build command..."
 
 CMD="docker buildx build \
     --tag ${IMAGE_NAME}:${TAG} \
-    --platform linux/amd64,linux/arm64"
+    --platform ${PLATFORM}"
 # Include --no-cache flag if set
 if [[ -n "$CACHE_FLAG" ]]; then
     CMD+=" $CACHE_FLAG"
@@ -152,8 +181,16 @@ success "Image built successfully with tag: ${TAG}"
 if [[ -n "$LOCAL_FLAG" ]]; then
     divider
     info "Converting the OCI image to Docker format..."
+
+    # Determine the architecture for skopeo based on platform
+    if [[ "$PLATFORM" == *"arm64"* ]]; then
+        SKOPEO_ARCH="arm64"
+    else
+        SKOPEO_ARCH="amd64"
+    fi
+
     skopeo copy --override-os linux --override-arch \
-        arm64 oci-archive:"${CONTEXT}/.tmp/oci-image.tar" \
+        ${SKOPEO_ARCH} oci-archive:"${CONTEXT}/.tmp/oci-image.tar" \
         docker-archive:"${CONTEXT}/.tmp/docker-compatible-image.tar":"${IMAGE_NAME}:${TAG}"
     success "OCI image converted to Docker archive."
 

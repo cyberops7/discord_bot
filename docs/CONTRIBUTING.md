@@ -355,12 +355,14 @@ testing before submitting a PR with updated dependencies.
 
    ```shell
    uv lock --upgrade-package package-name
+   uv sync
    ```
 
 * Upgrading all packages
 
    ```shell
    uv lock --upgrade
+   uv sync
    ```
 
 ## Running the app

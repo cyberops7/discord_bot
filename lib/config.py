@@ -40,14 +40,14 @@ class ConfigDict:
             msg = f"Attribute '{name}' does not exist and cannot be deleted"
             raise AttributeError(msg)
 
-    def __getattr__(self, name: str) -> Any:  # pyre-ignore[3]
+    def __getattr__(self, name: str) -> Any:
         """Allow accessing config values as attributes"""
         if name in self._data:
             return self._data[name]
         msg = f"Configuration key '{name}' not found"
         raise AttributeError(msg)
 
-    def __getitem__(self, key: str) -> Any:  # pyre-ignore[3]
+    def __getitem__(self, key: str) -> Any:
         """Allow dictionary-style access if needed"""
         return self._data[key]
 
@@ -55,7 +55,6 @@ class ConfigDict:
         """Better representation for debugging"""
         return f"ConfigDict({self._data})"
 
-    # pyre-ignore[3]
     def get(self, key: str, default: object | None = None) -> Any:
         """Get configuration value with optional default"""
         return self._data.get(key, default)
@@ -73,7 +72,7 @@ class Config:
     _config_path: Path | None = None
     _pyproject_path: Path | None = None
 
-    def __getattr__(self, name: str) -> Any:  # pyre-ignore[3]
+    def __getattr__(self, name: str) -> Any:
         """Allow accessing config values as attributes"""
         return getattr(self._config_data, name)
 
@@ -158,7 +157,7 @@ class Config:
         logger.warning("Falling back to UTC")
         return datetime.UTC
 
-    def get(self, key: str, default: object | None = None) -> Any:  # pyre-ignore[3]
+    def get(self, key: str, default: object | None = None) -> Any:
         """Get configuration value with optional default"""
         if self._config_data:
             return self._config_data.get(key, default)

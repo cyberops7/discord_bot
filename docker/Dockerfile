@@ -28,8 +28,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY ./ $APP_HOME
 
 # Create application directory and set permissions
-RUN addgroup --system appgroup && \
-    adduser --system appuser --ingroup appgroup --home $APP_HOME && \
+RUN addgroup --system --gid 10001 appgroup && \
+    adduser --system --uid 10001 --ingroup appgroup --home $APP_HOME appuser && \
     mkdir -p $LOG_DIR && \
     chown -R appuser:appgroup $APP_HOME
 
