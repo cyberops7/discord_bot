@@ -1,6 +1,6 @@
 [project]
 name = "discord_bot"
-version = "0.4.0"
+version = "0.5.0"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -70,6 +70,9 @@ asyncio_default_fixture_loop_scope = "function"
 env = [
     "PYTEST_THEME=emacs",
     "PYTEST_THEME_MODE=dark",
+]
+markers = [
+    "no_mock_config: exclude the mock_config fixture",
 ]
 #
 #[tool.pytest_env]

@@ -114,9 +114,11 @@ async def test_lifespan_success(
     async with lifespan(mock_app):  # pyre-ignore[16] - Provided dynamically
         # Verify startup behavior
         mock_intents.all.assert_called_once()
-        mock_discord_bot.assert_called_once_with(intents="mock_intents")
+        mock_discord_bot.assert_called_once_with(
+            command_prefix="!", intents="mock_intents"
+        )
         mock_getenv.assert_called_once_with("BOT_TOKEN")
-        mock_bot.start.assert_called_once_with("test_token")
+        mock_bot.start.assert_called_once_with("test_token", reconnect=True)
 
         # Verify bot is assigned to FastAPI state
         assert mock_app.state.bot == mock_bot
@@ -165,7 +167,7 @@ async def test_lifespan_no_bot_token(
 
     # Ensure initialization still happened
     mock_intents.all.assert_called_once()
-    mock_discord_bot.assert_called_once_with(intents="mock_intents")
+    mock_discord_bot.assert_called_once_with(command_prefix="!", intents="mock_intents")
     mock_getenv.assert_called_once_with("BOT_TOKEN")
 
 
@@ -209,9 +211,9 @@ async def test_lifespan_cleanup_on_exception(mocker: MockerFixture) -> None:
         await run_lifespan_with_exception()
 
     mock_bot.close.assert_called_once()
-    mock_discord_bot.assert_called_once_with(intents="mock_intents")
+    mock_discord_bot.assert_called_once_with(command_prefix="!", intents="mock_intents")
     mock_getenv.assert_called_once_with("BOT_TOKEN")
-    mock_bot.start.assert_called_once_with("test_token")
+    mock_bot.start.assert_called_once_with("test_token", reconnect=True)
 
     expected_logs = [
         mocker.call.info("Initializing Discord bot..."),

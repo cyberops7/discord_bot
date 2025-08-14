@@ -522,6 +522,7 @@ class TestConfig:
 class TestConfigModule:
     """Tests for the module-level config instance"""
 
+    @pytest.mark.no_mock_config  # type: ignore[misc]
     def test_module_config_instance_creation(self) -> None:
         """Test that a module-level config instance is created properly"""
         # Import the module config instance

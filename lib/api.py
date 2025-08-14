@@ -33,7 +33,7 @@ async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
 
     # Initialize the bot with the necessary intents
     intents = Intents.all()
-    bot = DiscordBot(intents=intents)
+    bot = DiscordBot(command_prefix="!", intents=intents)
 
     # Retrieve the bot token from environment variables
     logger.info("Retrieving bot token...")
@@ -46,7 +46,7 @@ async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
     # Start the bot
     logger.info("Starting Discord bot...")
     # Start the bot asynchronously (in the background) to not block 'app's lifespan
-    bot_task = asyncio.create_task(bot.start(bot_token))
+    bot_task = asyncio.create_task(bot.start(bot_token, reconnect=True))
 
     # Save the bot instance to FastAPI's state
     api_app.state = AppState(bot=bot)

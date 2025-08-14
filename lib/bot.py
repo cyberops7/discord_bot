@@ -1,74 +1,121 @@
 """DiscordBot class"""
 
 import asyncio
+import importlib
 import logging
-from dataclasses import dataclass, field
+from dataclasses import field
 from datetime import datetime, tzinfo  # noqa: F401 RUF100 - used in cast() as string
+from pathlib import Path
 from typing import cast
 
 import discord
+from discord.ext import commands
 
-from lib.config import config
+from lib.bot_log_context import LogContext
+from lib.config import Any, config
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-EmbedFieldDict = dict[str, bool | str | None] | dict[str, bool | str]
 
-
-@dataclass
-class LogContext:
-    """Context information for logging"""
-
-    log_message: str
-    log_channel: discord.TextChannel | None = None
-    level: str = "INFO"
-    color: discord.Color | None = None
-    action: str | None = None
-    embed: bool = False
-    user: discord.Member | discord.ClientUser | None = None
-    channel: discord.TextChannel | None = None
-    extra_embed_fields: list[EmbedFieldDict] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        if not self.color:
-            self.color = self._get_level_color(self.level)
-        if not self.log_channel:
-            if DiscordBot.default_log_channel:
-                self.log_channel = DiscordBot.default_log_channel
-                logger.debug("Using default log channel")
-            else:
-                msg = "Logging channel not found."
-                raise AttributeError(msg)
-
-    @staticmethod
-    def _get_level_color(level: str) -> discord.Color:
-        """Get color based on the log level"""
-        level_colors = {
-            "CRITICAL": discord.Color.dark_red(),
-            "ERROR": discord.Color.red(),
-            "WARNING": discord.Color.orange(),
-            "INFO": discord.Color.blue(),
-            "DEBUG": discord.Color.light_grey(),
-        }
-        return level_colors.get(level.upper(), discord.Color.default())
-
-
-class DiscordBot(discord.Client):
+class DiscordBot(commands.Bot):
     """Discord bot class"""
 
-    default_log_channel: discord.TextChannel | None = None
+    def __init__(
+        self,
+        command_prefix: str,
+        intents: discord.Intents,
+        **options: Any,
+    ) -> None:
+        super().__init__(command_prefix=command_prefix, intents=intents, **options)
+
+    async def _load_cogs(self) -> None:
+        """Dynamically load all cogs from the lib/cogs directory"""
+        cogs_dir = Path("lib/cogs")
+
+        if not cogs_dir.exists():
+            logger.warning("Cogs directory 'lib/cogs' does not exist")
+            return
+
+        loaded_cogs = []
+        failed_cogs = []
+
+        # Find all Python files in the cogs directory
+        for cog_file in cogs_dir.glob("*.py"):
+            # Skip __init__.py and other non-cog files
+            if cog_file.name.startswith("__"):
+                continue
+
+            module_name = f"lib.cogs.{cog_file.stem}"
+
+            try:
+                # Import the module
+                module = importlib.import_module(module_name)
+
+                # Look for classes that inherit from commands.Cog
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+
+                    # Check if it's a class and inherits from commands.Cog
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, commands.Cog)
+                        and attr != commands.Cog
+                    ):
+                        # Instantiate and add the cog
+                        cog_instance = attr(self)
+                        await self.add_cog(cog_instance)
+                        loaded_cogs.append(attr_name)
+                        logger.info("Loaded cog: %s from %s", attr_name, module_name)
+                        break
+                else:
+                    logger.warning("No valid Cog class found in %s", module_name)
+                    failed_cogs.append(cog_file.stem)
+
+            except (
+                ImportError,
+                ModuleNotFoundError,
+                AttributeError,
+                TypeError,
+                discord.ClientException,
+            ):
+                logger.exception(
+                    "Failed to load cog from %s",
+                    module_name,
+                )
+                failed_cogs.append(cog_file.stem)
+
+        if loaded_cogs:
+            logger.info(
+                "Successfully loaded %d cogs: %s",
+                len(loaded_cogs),
+                ", ".join(loaded_cogs),
+            )
+
+        if failed_cogs:
+            logger.warning(
+                "Failed to load %d cogs: %s", len(failed_cogs), ", ".join(failed_cogs)
+            )
 
     async def on_ready(self) -> None:
         """Called when the bot is ready"""
-        logger.info("We have logged in as %s", self.user)
+        if bot_user := self.user:
+            logger.info("We have logged in as %s", bot_user.display_name)
+        else:
+            logger.error("The bot user is not set")
 
-        # Initialize the global default_log_channel
-        # global default_log_channel
-        DiscordBot.default_log_channel = await self._get_log_channel()
-        if not DiscordBot.default_log_channel:
+        # Store the default log channel object in the config
+        config.LOG_CHANNEL = await self._get_log_channel()
+        if not config.LOG_CHANNEL:
+            config.LOG_CHANNEL = None
             logger.warning(
                 "Could not find log channel with ID %s", config.CHANNELS.BOT_LOGS
             )
+
+        # Dynamically load all cogs
+        await self._load_cogs()
+
+        msg = ",".join([cmd.name for cmd in self.commands])
+        logger.info("Registered commands: %s", msg)
 
         await self.log_bot_event(
             level="INFO", event="Bot Startup", details=f"Version {config.VERSION}"
@@ -286,7 +333,7 @@ class DiscordBot(discord.Client):
         if extra_log_channel:
             context.log_channel = extra_log_channel
             await self.log_to_channel(context)
-        context.log_channel = self.default_log_channel
+        context.log_channel = config.LOG_CHANNEL
         return await self.log_to_channel(context)
 
     async def log_user_action(
@@ -333,6 +380,7 @@ class DiscordBot(discord.Client):
             ban_reason: The reason for the ban
             message: The message that triggered the spam detection
         """
+        # noinspection PyUnreachableCode
         if not isinstance(message.author, discord.Member):
             logger.warning(
                 "Message author is not a Member object, skipping `ban_spammer`."
@@ -484,16 +532,7 @@ class DiscordBot(discord.Client):
             ban_reason = "Message detected in #mousetrap."
             await self.ban_spammer(ban_reason, message)
 
-        if message.channel.id == config.CHANNELS.BOT_PLAYGROUND:
-            # Respond to messages starting with "hello"
-            if message.content.lower().startswith("hello"):
-                logger.info("Received 'hello' from %s", message.author)
-                await message.channel.send("Hello")
-                return
-            if message.content.lower().startswith("ping"):
-                logger.info("Received 'ping' from %s", message.author)
-                await message.channel.send("Pong")
-                return
+        await self.process_commands(message)
 
     async def on_member_join(self, member: discord.Member) -> None:
         """Called when a member joins the server"""
@@ -524,8 +563,10 @@ class DiscordBot(discord.Client):
                 description=(
                     f"Welcome to the server, {member.mention}! "
                     f"Please read the rules in {rules_channel.mention}. "
-                    f"You will need to react to the first post in that channel with "
-                    f":white_check_mark: to gain access to the rest of the channels.\n"
+                    f"You will need to accept the rules by reacting to [the first "
+                    f"post in this channel](https://discord.com/channels/1109224479281"
+                    f"905787/1229425258747138180/1296852391303450738) with ✅ to gain "
+                    f"access to the rest of the channels.\n"
                     f"<:logo_small1:1181558525202284585>"
                 ),
                 color=discord.Color.blue(),
