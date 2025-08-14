@@ -86,7 +86,7 @@ class HealthCheckResponse(BaseModel):
 @app.get("/healthcheck")
 async def healthcheck(request: Request) -> JSONResponse:
     """
-    Healthcheck endpoint that uses the Discord bot instance to check readiness.
+    Health check endpoint that uses the Discord bot instance to check readiness.
     """
     bot = request.app.state.bot
     if bot.is_ready():

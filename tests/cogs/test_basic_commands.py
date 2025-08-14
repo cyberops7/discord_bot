@@ -84,9 +84,9 @@ class TestBasicCommands:
         # Mock TYPE_CHECKING to be True to force execution of the import block
         with patch("typing.TYPE_CHECKING", new=True):
             # Reimport the module which will now execute the TYPE_CHECKING block
-            import lib.cogs.basic_commands  # noqa: PLC0415
+            import lib.cogs.basic_commands as basic_commands_module  # noqa: PLC0415
 
-            importlib.reload(lib.cogs.basic_commands)
+            importlib.reload(basic_commands_module)
 
-        # Verify the module is properly loaded
-        assert hasattr(lib.cogs.basic_commands, "BasicCommands")
+            # Verify the module is properly loaded
+            assert hasattr(basic_commands_module, "BasicCommands")
