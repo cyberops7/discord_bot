@@ -432,9 +432,9 @@ class TestTasks:
         # Mock TYPE_CHECKING to be True to force execution of the import block
         with patch("typing.TYPE_CHECKING", new=True):
             # Reimport the module which will now execute the TYPE_CHECKING block
-            import lib.cogs.tasks  # noqa: PLC0415
+            import lib.cogs.tasks as tasks_module  # noqa: PLC0415
 
-            importlib.reload(lib.cogs.tasks)
+            importlib.reload(tasks_module)
 
-        # Verify the module is properly loaded
-        assert hasattr(lib.cogs.tasks, "Tasks")
+            # Verify the module is properly loaded
+            assert hasattr(tasks_module, "Tasks")

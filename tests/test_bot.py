@@ -52,7 +52,7 @@ class TestDiscordBot:
             level="WARNING",
         )
         mock_super_close.assert_called_once()
-        assert len(caplog.records) == 1  # make sure no WARNINGS were logged
+        assert len(caplog.records) == 0  # make sure no WARNINGS were logged
 
     @async_test
     @pytest.mark.parametrize(
