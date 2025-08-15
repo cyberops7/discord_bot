@@ -21,8 +21,10 @@ def tasks_cog(discord_bot: DiscordBot) -> Tasks:
     with patch("discord.ext.tasks.Loop.start"):
         cog = Tasks(discord_bot)
         # Mock the loop control methods for testing
-        cog.clean_channel_members.start = MagicMock()
-        cog.clean_channel_members.cancel = MagicMock()
+        cog.clean_channel_members_task.start = MagicMock()
+        cog.clean_channel_members_task.cancel = MagicMock()
+        cog.clean_channel_members_task_dry_run.start = MagicMock()
+        cog.clean_channel_members_task_dry_run.cancel = MagicMock()
         return cog
 
 
@@ -123,21 +125,59 @@ def mock_member_bot(mock_config: MagicMock) -> MagicMock:
 class TestTasks:
     """Test cases for the Tasks cog."""
 
-    def test_cog_initialization(self, discord_bot: DiscordBot) -> None:
-        """Test that the Tasks cog initializes correctly and starts the task"""
-        with patch.object(Tasks, "__init__") as mock_init:
-            mock_init.return_value = None
-            cog = Tasks(discord_bot)
-            mock_init.assert_called_once_with(discord_bot)
+    def test_cog_initialization_normal_mode(
+        self, discord_bot: DiscordBot, mock_config: MagicMock
+    ) -> None:
+        """
+        Test that the Tasks cog initializes correctly and starts
+        the correct task in normal mode
+        """
+        mock_config.DRY_RUN = False
 
+        with patch("discord.ext.tasks.Loop.start") as mock_start:
+            cog = Tasks(discord_bot)
             assert cog is not None
             assert isinstance(cog, Tasks)
+            # Verify that the normal task would be started
+            # (patched, so we can't verify directly)
+            assert mock_start.call_count == 1
+
+    def test_cog_initialization_dry_run_mode(
+        self, discord_bot: DiscordBot, mock_config: MagicMock
+    ) -> None:
+        """
+        Test that the Tasks cog initializes correctly
+        and starts the correct task in DRY_RUN mode
+        """
+        mock_config.DRY_RUN = True
+
+        with patch("discord.ext.tasks.Loop.start") as mock_start:
+            cog = Tasks(discord_bot)
+            assert cog is not None
+            assert isinstance(cog, Tasks)
+            # Verify that the dry_run task would be started
+            # (patched, so we can't verify directly)
+            assert mock_start.call_count == 1
 
     @async_test
-    async def test_cog_unload(self, tasks_cog: Tasks) -> None:
-        """Test that cog_unload cancels the task"""
+    async def test_cog_unload_normal_mode(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        """Test that cog_unload cancels the correct task in normal mode"""
+        mock_config.DRY_RUN = False
         await tasks_cog.cog_unload()
-        tasks_cog.clean_channel_members.cancel.assert_called_once()
+        tasks_cog.clean_channel_members_task.cancel.assert_called_once()
+        tasks_cog.clean_channel_members_task_dry_run.cancel.assert_not_called()
+
+    @async_test
+    async def test_cog_unload_dry_run_mode(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        """Test that cog_unload cancels the correct task in DRY_RUN mode"""
+        mock_config.DRY_RUN = True
+        await tasks_cog.cog_unload()
+        tasks_cog.clean_channel_members_task_dry_run.cancel.assert_called_once()
+        tasks_cog.clean_channel_members_task.cancel.assert_not_called()
 
     @async_test
     async def test_before_clean_channel_members(
@@ -159,30 +199,134 @@ class TestTasks:
         assert record.name == "lib.cogs.tasks"
 
     @async_test
-    async def test_clean_channel_members_not_sunday(
+    async def test_clean_channel_members_task_not_sunday(
         self,
-        caplog: pytest.LogCaptureFixture,
         tasks_cog: Tasks,
         mock_config: MagicMock,
     ) -> None:
-        """Test that task does nothing when it's not Sunday"""
+        """Test that clean_channel_members_task does nothing when it's not Sunday"""
         # Mock it to be Monday (weekday = 0)
         mock_monday = datetime.datetime(
             2023, 1, 2, 17, 0, 0, tzinfo=mock_config.TIMEZONE
         )  # Monday
 
-        with patch("datetime.datetime") as mock_dt, caplog.at_level(logging.INFO):
+        with patch("lib.cogs.tasks.datetime.datetime") as mock_dt:
             mock_dt.now.return_value = mock_monday
+
+            # Mock the implementation method to verify it's not called
+            tasks_cog._clean_channel_members = AsyncMock()
+
+            await tasks_cog.clean_channel_members_task()
+
+            # Verify the implementation method was not called
+            tasks_cog._clean_channel_members.assert_not_called()
+
+    @async_test
+    async def test_clean_channel_members_task_sunday(
+        self,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that clean_channel_members_task calls implementation on Sunday"""
+        # Mock it to be Sunday (weekday = 6)
+        mock_sunday = datetime.datetime(
+            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
+        )  # Sunday
+
+        with patch("lib.cogs.tasks.datetime.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_sunday
+
+            # Mock the implementation method
+            tasks_cog._clean_channel_members = AsyncMock()
+
+            await tasks_cog.clean_channel_members_task()
+
+            # Verify the implementation method was called
+            tasks_cog._clean_channel_members.assert_called_once()
+
+    @async_test
+    async def test_clean_channel_members_task_dry_run_always_runs(
+        self,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """
+        Test that clean_channel_members_task_dry_run always calls implementation,
+        regardless of day
+        """
+        # Mock it to be Monday (weekday = 0)
+        mock_monday = datetime.datetime(
+            2023, 1, 2, 17, 0, 0, tzinfo=mock_config.TIMEZONE
+        )  # Monday
+
+        with patch("lib.cogs.tasks.datetime.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_monday
+
+            # Mock the implementation method
+            tasks_cog._clean_channel_members = AsyncMock()
+
+            await tasks_cog.clean_channel_members_task_dry_run()
+
+            # Verify the implementation method was called even on Monday
+            tasks_cog._clean_channel_members.assert_called_once()
+
+    @async_test
+    async def test_clean_channel_members_task_dry_run_sunday(
+        self,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """
+        Test that clean_channel_members_task_dry_run calls implementation on Sunday too
+        """
+        # Mock it to be Sunday (weekday = 6)
+        mock_sunday = datetime.datetime(
+            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
+        )  # Sunday
+
+        with patch("lib.cogs.tasks.datetime.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_sunday
+
+            # Mock the implementation method
+            tasks_cog._clean_channel_members = AsyncMock()
+
+            await tasks_cog.clean_channel_members_task_dry_run()
+
+            # Verify the implementation method was called
+            tasks_cog._clean_channel_members.assert_called_once()
+
+    @async_test
+    async def test_clean_channel_members_implementation_with_guild(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+        mock_guild: MagicMock,
+        mock_member_new: MagicMock,
+    ) -> None:
+        """Test that the implementation method works correctly with proper setup"""
+        # Mock it to be Sunday
+        mock_sunday = datetime.datetime(
+            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
+        )  # Sunday
+
+        # Set up a guild with members who shouldn't be kicked
+        mock_guild.members = [mock_member_new]
+        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with patch("datetime.datetime") as mock_dt, caplog.at_level(logging.INFO):
+            mock_dt.now.return_value = mock_sunday
             mock_dt.timedelta = datetime.timedelta
 
-            await tasks_cog.clean_channel_members()
+            await tasks_cog._clean_channel_members()
 
-        # Should not call any bot methods
-        if hasattr(tasks_cog.bot, "get_guild") and hasattr(
-            tasks_cog.bot.get_guild, "called"
-        ):
-            assert not tasks_cog.bot.get_guild.called  # type: ignore[attr-defined]
-        assert len(caplog.records) == 0
+        # Should call bot methods and log properly
+        tasks_cog.bot.get_guild.assert_called_once()
+        assert (
+            len([r for r in caplog.records if "Cleaning channel members" in r.message])
+            == 1
+        )
 
     @async_test
     async def test_clean_channel_members_guild_not_found(
@@ -206,7 +350,7 @@ class TestTasks:
                 ValueError,
                 match=f"Guild with ID {mock_config.GUILDS.JIMS_GARAGE} not found",
             ):
-                await tasks_cog.clean_channel_members()
+                await tasks_cog._clean_channel_members()
 
     @async_test
     async def test_clean_channel_members_no_members_to_kick(
@@ -233,7 +377,7 @@ class TestTasks:
             mock_dt.now.return_value = mock_sunday
             mock_dt.timedelta = datetime.timedelta
 
-            await tasks_cog.clean_channel_members()
+            await tasks_cog._clean_channel_members()
 
         # Verify logging
         assert (
@@ -281,7 +425,7 @@ class TestTasks:
             mock_dt.now.return_value = mock_sunday
             mock_dt.timedelta = datetime.timedelta
 
-            await tasks_cog.clean_channel_members()
+            await tasks_cog._clean_channel_members()
 
         # Verify rate limiting sleep was called
         mock_sleep.assert_called_once_with(0.2)
@@ -339,7 +483,7 @@ class TestTasks:
             mock_dt.now.return_value = mock_sunday
             mock_dt.timedelta = datetime.timedelta
 
-            await tasks_cog.clean_channel_members()
+            await tasks_cog._clean_channel_members()
 
         # Verify member was still kicked despite DM failure
         mock_member_old_no_garage_role.kick.assert_called_once()
@@ -381,7 +525,7 @@ class TestTasks:
             mock_dt.now.return_value = mock_sunday
             mock_dt.timedelta = datetime.timedelta
 
-            await tasks_cog.clean_channel_members()
+            await tasks_cog._clean_channel_members()
 
         # Verify member was still kicked despite DM failure
         mock_member_old_no_garage_role.kick.assert_called_once()
@@ -417,7 +561,7 @@ class TestTasks:
             mock_dt.now.return_value = mock_sunday
             mock_dt.timedelta = datetime.timedelta
 
-            await tasks_cog.clean_channel_members()
+            await tasks_cog._clean_channel_members()
 
         # Verify the member was not kicked
         member_no_join.kick.assert_not_called()
@@ -453,7 +597,7 @@ class TestTasks:
             mock_dt.now.return_value = mock_sunday
             mock_dt.timedelta = datetime.timedelta
 
-            await tasks_cog.clean_channel_members()
+            await tasks_cog._clean_channel_members()
 
         # Verify rate limiting sleep was still called
         mock_sleep.assert_called_once_with(0.2)
@@ -511,7 +655,7 @@ class TestTasks:
             mock_dt.now.return_value = mock_sunday
             mock_dt.timedelta = datetime.timedelta
 
-            await tasks_cog.clean_channel_members()
+            await tasks_cog._clean_channel_members()
 
         # Verify logging
         log_messages = [r.message for r in caplog.records]
