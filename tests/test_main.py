@@ -1,7 +1,5 @@
 """Unit tests for main.py"""
 
-import os
-from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, Mock, NonCallableMagicMock
 
 import pytest
@@ -18,19 +16,9 @@ def mock_common_calls(
     MagicMock | AsyncMock | NonCallableMagicMock,
 ]:
     """Fixture to mock common calls"""
-    mock_load_dotenv = mocker.patch("main.load_dotenv")
+    mock_config = mocker.patch("main.Config")
     mock_configure_logger = mocker.patch("main.configure_logger")
-    return mock_load_dotenv, mock_configure_logger
-
-
-@pytest.fixture(autouse=True)
-def set_env_vars() -> Iterator[None]:
-    """Fixture to set environment variables for all tests"""
-    original_env = os.environ.copy()
-    os.environ["API_PORT"] = "8000"
-    yield
-    os.environ.clear()
-    os.environ.update(original_env)
+    return mock_config, mock_configure_logger
 
 
 @pytest.fixture
@@ -53,7 +41,12 @@ def test_main_successful_run(
 ) -> None:
     """Test successful execution of main()"""
     # Unpack the mocks directly from the fixture in the function signature
-    mock_load_dotenv, mock_configure_logger = mock_common_calls
+    mock_config_class, mock_configure_logger = mock_common_calls
+
+    # Configure the mock config instance to return API_PORT
+    mock_config_instance = Mock()
+    mock_config_instance.API_PORT = 8000
+    mock_config_class.return_value = mock_config_instance
 
     # Mock validate_port to return a specific value
     mocker.patch("main.validate_port", return_value=8000)
@@ -61,11 +54,8 @@ def test_main_successful_run(
     # Call the main function
     main()
 
-    # Verify expected log messages
+    # Verify expected log messages (removed load_dotenv log message)
     expected_logs = [
-        mocker.call.info(
-            "Loading environment variables from .env file (if present)..."
-        ),
         mocker.call.info("Configuring logger..."),
         mocker.call.info("Starting FastAPI server..."),
     ]
@@ -79,14 +69,18 @@ def test_main_successful_run(
         log_config=None,
     )
 
-    mock_load_dotenv.assert_called_once_with(override=True)
+    # Verify Config was instantiated
+    mock_config_class.assert_called_once()
     mock_configure_logger.assert_called_once()
 
 
 def test_default_port(mocker: MockerFixture, mock_uvicorn: Mock) -> None:
     """Test that the default port is used when API_PORT is not set"""
-    # Remove API_PORT from environment
-    os.environ.pop("API_PORT", None)
+    # Mock Config to return the default API_PORT value from config.yaml
+    mock_config_class = mocker.patch("main.Config")
+    mock_config_instance = Mock()
+    mock_config_instance.API_PORT = 8080  # Default value from config.yaml
+    mock_config_class.return_value = mock_config_instance
 
     # Mock validate_port to return the default port
     mock_validate_port = mocker.patch("main.validate_port", return_value=8080)
@@ -106,13 +100,16 @@ def test_default_port(mocker: MockerFixture, mock_uvicorn: Mock) -> None:
     )
 
 
-def test_invalid_port() -> None:
+def test_invalid_port(mocker: MockerFixture) -> None:
     """Test behavior with invalid port values"""
-    # Set an invalid port in the environment
-    os.environ["API_PORT"] = "invalid"
+    # Mock Config to return an invalid API_PORT value
+    mock_config_class = mocker.patch("main.Config")
+    mock_config_instance = Mock()
+    mock_config_instance.API_PORT = "invalid"  # String that can't be converted to int
+    mock_config_class.return_value = mock_config_instance
 
     # Call the main function and expect ValueError to be raised
-    # since main.py tries to convert API_PORT to int
+    # since main.py tries to convert config.API_PORT to int
     with pytest.raises(
         ValueError, match=r"invalid literal for int\(\) with base 10: \'invalid\'"
     ):

@@ -422,6 +422,118 @@ class TestTasks:
         # Verify the member was not kicked
         member_no_join.kick.assert_not_called()
 
+    @async_test
+    async def test_clean_channel_members_dry_run_with_eligible_member(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+        mock_guild: MagicMock,
+        mock_member_old_no_garage_role: MagicMock,
+    ) -> None:
+        """Test task in DRY_RUN mode logs actions but doesn't perform them"""
+        # Set DRY_RUN to True
+        mock_config.DRY_RUN = True
+
+        # Mock it to be Sunday
+        mock_sunday = datetime.datetime(
+            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
+        )  # Sunday
+
+        # Set up guild with member who should be kicked
+        mock_guild.members = [mock_member_old_no_garage_role]
+        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with (
+            patch("lib.cogs.tasks.datetime.datetime") as mock_dt,
+            patch("lib.cogs.tasks.asyncio.sleep") as mock_sleep,
+            caplog.at_level(logging.INFO),
+        ):
+            mock_dt.now.return_value = mock_sunday
+            mock_dt.timedelta = datetime.timedelta
+
+            await tasks_cog.clean_channel_members()
+
+        # Verify rate limiting sleep was still called
+        mock_sleep.assert_called_once_with(0.2)
+
+        # Verify NO DM was sent, and NO kick occurred (DRY_RUN mode)
+        mock_member_old_no_garage_role.send.assert_not_called()
+        mock_member_old_no_garage_role.kick.assert_not_called()
+
+        # Verify DRY_RUN logging messages
+        log_messages = [r.message for r in caplog.records]
+        assert any("Cleaning channel members" in msg for msg in log_messages)
+        assert any(
+            "DRY_RUN: Would have sent DM to OldMember" in msg for msg in log_messages
+        )
+        assert any(
+            "DRY_RUN: Would have kicked OldMember" in msg for msg in log_messages
+        )
+        assert any(
+            "DRY_RUN: Would have cleaned 1 members" in msg for msg in log_messages
+        )
+
+        # Verify bot event logging for DRY_RUN
+        assert tasks_cog.bot.log_bot_event.call_count == 2  # type: ignore[attr-defined]
+        tasks_cog.bot.log_bot_event.assert_any_call(event="Task - Member Cleanup")
+        tasks_cog.bot.log_bot_event.assert_any_call(
+            event="Task - Member Cleanup (DRY_RUN)",
+            details="Would have cleaned 1 members.",
+        )
+
+    @async_test
+    async def test_clean_channel_members_dry_run_no_eligible_members(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+        mock_guild: MagicMock,
+        mock_member_new: MagicMock,
+        mock_member_with_garage_role: MagicMock,
+    ) -> None:
+        """Test task in DRY_RUN mode when there are no eligible members to process"""
+        # Set DRY_RUN to True
+        mock_config.DRY_RUN = True
+
+        # Mock it to be Sunday
+        mock_sunday = datetime.datetime(
+            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
+        )  # Sunday
+
+        # Set up a guild with members who shouldn't be kicked
+        mock_guild.members = [mock_member_new, mock_member_with_garage_role]
+        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with patch("datetime.datetime") as mock_dt, caplog.at_level(logging.INFO):
+            mock_dt.now.return_value = mock_sunday
+            mock_dt.timedelta = datetime.timedelta
+
+            await tasks_cog.clean_channel_members()
+
+        # Verify logging
+        log_messages = [r.message for r in caplog.records]
+        assert any("Cleaning channel members" in msg for msg in log_messages)
+        assert any(
+            "DRY_RUN: Would have cleaned 0 members" in msg for msg in log_messages
+        )
+
+        # Verify bot event logging for DRY_RUN with 0 members
+        assert tasks_cog.bot.log_bot_event.call_count == 2  # type: ignore[attr-defined]
+        tasks_cog.bot.log_bot_event.assert_any_call(event="Task - Member Cleanup")
+        tasks_cog.bot.log_bot_event.assert_any_call(
+            event="Task - Member Cleanup (DRY_RUN)",
+            details="Would have cleaned 0 members.",
+        )
+
+        # Verify no members were processed
+        mock_member_new.kick.assert_not_called()
+        mock_member_new.send.assert_not_called()
+        mock_member_with_garage_role.kick.assert_not_called()
+        mock_member_with_garage_role.send.assert_not_called()
+
     def test_type_checking_import_coverage(self) -> None:
         """Test to ensure TYPE_CHECKING import block is covered"""
         # Remove the module from sys.modules to force reimport

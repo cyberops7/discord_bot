@@ -54,50 +54,76 @@ class Tasks(commands.Cog):
                     # Sleep to safely avoid rate limiting (50 requests per second)
                     await asyncio.sleep(0.2)
 
-                    # Send DM before kicking
-                    try:
-                        await member.send(
-                            "You have been removed from the Jim's Garage server "
-                            "because you joined over a week ago and haven't accepted "
-                            "the rules. If you believe this was a mistake, please "
-                            "feel free to rejoin the server and reach out to a mod."
+                    if config.DRY_RUN:
+                        # DRY_RUN mode: Log what would have happened but take no action
+                        logger.info(
+                            "DRY_RUN: Would have sent DM to %s (%s) before kicking",
+                            member.display_name,
+                            member,
                         )
                         logger.info(
-                            "Sent DM to %s (%s) before kicking",
+                            "DRY_RUN: Would have kicked %s (%s) from the server - "
+                            "joined %s - roles: %s",
                             member.display_name,
                             member,
+                            joined_time.strftime("%Y-%m-%d %H:%M")
+                            if member.joined_at
+                            else "Unknown",
+                            member.roles,
                         )
-                    except discord.Forbidden:
-                        logger.warning(
-                            "Could not send DM to %s (%s) - "
-                            "DMs may be disabled or bot is blocked",
-                            member.display_name,
-                            member,
-                        )
-                    except discord.HTTPException as e:
-                        logger.warning(
-                            "Failed to send DM to %s: %s", member.display_name, e
-                        )
+                    else:
+                        # Send DM before kicking
+                        try:
+                            await member.send(
+                                "You have been removed from the Jim's Garage server "
+                                "because you joined over a week ago and haven't "
+                                "accepted the rules. If you believe this was a "
+                                "mistake, please feel free to rejoin the server and "
+                                "reach out to a mod."
+                            )
+                            logger.info(
+                                "Sent DM to %s (%s) before kicking",
+                                member.display_name,
+                                member,
+                            )
+                        except discord.Forbidden:
+                            logger.warning(
+                                "Could not send DM to %s (%s) - "
+                                "DMs may be disabled or bot is blocked",
+                                member.display_name,
+                                member,
+                            )
+                        except discord.HTTPException as e:
+                            logger.warning(
+                                "Failed to send DM to %s: %s", member.display_name, e
+                            )
 
-                    await member.kick(
-                        reason="Member has not accepted the rules in over a week."
-                    )
-                    logger.info(
-                        "Kicked %s (%s) from the server - joined %s - roles: %s",
-                        member.display_name,
-                        member,
-                        joined_time.strftime("%Y-%m-%d %H:%M")
-                        if member.joined_at
-                        else "Unknown",
-                        member.roles,
-                    )
+                        await member.kick(
+                            reason="Member has not accepted the rules in over a week."
+                        )
+                        logger.info(
+                            "Kicked %s (%s) from the server - joined %s - roles: %s",
+                            member.display_name,
+                            member,
+                            joined_time.strftime("%Y-%m-%d %H:%M")
+                            if member.joined_at
+                            else "Unknown",
+                            member.roles,
+                        )
                     count += 1
 
-            logger.info("Cleaned %s members.", count)
-            await self.bot.log_bot_event(
-                event="Task - Member Cleanup",
-                details=f"Cleaned {count} members.",
-            )
+            if config.DRY_RUN:
+                logger.info("DRY_RUN: Would have cleaned %s members.", count)
+                await self.bot.log_bot_event(
+                    event="Task - Member Cleanup (DRY_RUN)",
+                    details=f"Would have cleaned {count} members.",
+                )
+            else:
+                logger.info("Cleaned %s members.", count)
+                await self.bot.log_bot_event(
+                    event="Task - Member Cleanup",
+                    details=f"Cleaned {count} members.",
+                )
 
     @clean_channel_members.before_loop
     async def before_clean_channel_members(self) -> None:

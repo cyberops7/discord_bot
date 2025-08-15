@@ -79,10 +79,12 @@ def mock_config(
     # Create the base mock config first
     with patch("lib.config.config") as mock_cfg:
         # Set up all the config attributes before applying patches that trigger imports
+        mock_cfg.BOT_TOKEN = "test_token"  # noqa: S105 hardcoded password
         mock_cfg.CHANNELS.BOT_LOGS = 101
         mock_cfg.CHANNELS.BOT_PLAYGROUND = 123
         mock_cfg.CHANNELS.MOUSETRAP = 456
         mock_cfg.CHANNELS.RULES = 789
+        mock_cfg.DRY_RUN = False
         mock_cfg.LOG_CHANNEL = mock_channel(channel_id=mock_cfg.CHANNELS.BOT_LOGS)
         mock_cfg.LOG_CHANNEL.send = AsyncMock()
         mock_cfg.ROLES.ADMIN = 11111
@@ -95,10 +97,15 @@ def mock_config(
 
         # Now apply the remaining patches that might trigger module imports
         with (
+            patch("lib.api.config", mock_cfg),
             patch("lib.bot.config", mock_cfg),
             patch("lib.bot_log_context.config", mock_cfg),
             patch("lib.cogs.tasks.config", mock_cfg),
+            patch("tests.test_bot.config", mock_cfg),
+            patch("lib.config.load_dotenv") as mock_load_dotenv,
         ):
+            # Mock load_dotenv to prevent actual environment variable loading
+            mock_load_dotenv.return_value = None
             yield mock_cfg
 
 

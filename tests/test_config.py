@@ -603,3 +603,436 @@ class TestConfigDictParametrized:
     ) -> None:
         """Test get method with different scenarios"""
         assert config_dict_instance.get(key, default) == expected
+
+
+class TestConfigEnvVarMethods:
+    """Tests for Config environment variable override methods"""
+
+    @pytest.mark.parametrize(
+        ("env_value", "original_value", "expected"),
+        [
+            # Boolean conversions - truthy values
+            ("true", True, True),
+            ("True", True, True),
+            ("TRUE", True, True),
+            ("1", True, True),
+            ("yes", True, True),
+            ("YES", True, True),
+            ("on", True, True),
+            ("ON", True, True),
+            # Boolean conversions - falsy values
+            ("false", False, False),
+            ("False", False, False),
+            ("FALSE", False, False),
+            ("0", False, False),
+            ("no", False, False),
+            ("NO", False, False),
+            ("off", False, False),
+            ("OFF", False, False),
+            ("", False, False),
+            ("anything_else", False, False),
+        ],
+    )
+    def test_convert_env_value_boolean(
+        self, env_value: str, original_value: bool, expected: bool
+    ) -> None:
+        """Test _convert_env_value with boolean original values"""
+        result = Config._convert_env_value(env_value, original_value)
+        assert result == expected
+        assert isinstance(result, bool)
+
+    @pytest.mark.parametrize(
+        ("env_value", "original_value", "expected"),
+        [
+            # Integer conversions - success cases
+            ("42", 0, 42),
+            ("-123", 0, -123),
+            ("0", 0, 0),
+            ("999", 0, 999),
+        ],
+    )
+    def test_convert_env_value_integer_success(
+        self, env_value: str, original_value: int, expected: int
+    ) -> None:
+        """Test _convert_env_value with integer original values - success cases"""
+        result = Config._convert_env_value(env_value, original_value)
+        assert result == expected
+        assert isinstance(result, int)
+
+    @pytest.mark.parametrize(
+        ("env_value", "original_value"),
+        [
+            ("not_a_number", 0),
+            ("42.5", 0),
+            ("", 0),
+            ("abc123", 0),
+        ],
+    )
+    def test_convert_env_value_integer_failure(
+        self, mocker: MockerFixture, env_value: str, original_value: int
+    ) -> None:
+        """Test _convert_env_value with integer original values - failure cases"""
+        mock_logger = mocker.patch("lib.config.logger")
+
+        result = Config._convert_env_value(env_value, original_value)
+
+        # Should return the original string value when conversion fails
+        assert result == env_value
+        assert isinstance(result, str)
+
+        # Should log a warning
+        mock_logger.warning.assert_called_once_with(
+            "Could not convert env var '%s' to int, using string", env_value
+        )
+
+    @pytest.mark.parametrize(
+        ("env_value", "original_value", "expected"),
+        [
+            # Float conversions - success cases
+            ("42.5", 0.0, 42.5),
+            ("-123.456", 0.0, -123.456),
+            ("0.0", 0.0, 0.0),
+            ("999", 0.0, 999.0),  # Integer string should convert to float
+        ],
+    )
+    def test_convert_env_value_float_success(
+        self, env_value: str, original_value: float, expected: float
+    ) -> None:
+        """Test _convert_env_value with float original values - success cases"""
+        result = Config._convert_env_value(env_value, original_value)
+        assert result == expected
+        assert isinstance(result, float)
+
+    @pytest.mark.parametrize(
+        ("env_value", "original_value"),
+        [
+            ("not_a_number", 0.0),
+            ("", 0.0),
+            ("abc123", 0.0),
+        ],
+    )
+    def test_convert_env_value_float_failure(
+        self, mocker: MockerFixture, env_value: str, original_value: float
+    ) -> None:
+        """Test _convert_env_value with float original values - failure cases"""
+        mock_logger = mocker.patch("lib.config.logger")
+
+        result = Config._convert_env_value(env_value, original_value)
+
+        # Should return the original string value when conversion fails
+        assert result == env_value
+        assert isinstance(result, str)
+
+        # Should log a warning
+        mock_logger.warning.assert_called_once_with(
+            "Could not convert env var '%s' to float, using string", env_value
+        )
+
+    @pytest.mark.parametrize(
+        ("env_value", "original_value"),
+        [
+            ("test_string", "original"),
+            ("", "original"),
+            ("123", "original"),  # Numbers as strings should remain strings
+            ("true", "original"),  # Boolean-like strings should remain strings
+        ],
+    )
+    def test_convert_env_value_string(
+        self, env_value: str, original_value: str
+    ) -> None:
+        """Test _convert_env_value with string original values"""
+        result = Config._convert_env_value(env_value, original_value)
+        assert result == env_value
+        assert isinstance(result, str)
+
+    def test_convert_env_value_other_types(self) -> None:
+        """Test _convert_env_value with other original value types defaults to string"""
+        # Test with list original value
+        result = Config._convert_env_value("test", [1, 2, 3])
+        assert result == "test"
+        assert isinstance(result, str)
+
+        # Test with None original value
+        result = Config._convert_env_value("test", None)
+        assert result == "test"
+        assert isinstance(result, str)
+
+    def test_override_with_env_vars_simple_values(self, mocker: MockerFixture) -> None:
+        """Test _override_with_env_vars with simple key-value pairs"""
+        mock_logger = mocker.patch("lib.config.logger")
+
+        # Mock environment variables
+        env_vars = {
+            "STRING_KEY": "overridden_string",
+            "INT_KEY": "999",
+            "BOOL_KEY": "true",
+        }
+        mocker.patch("os.getenv", side_effect=lambda key: env_vars.get(key))
+
+        data = {
+            "STRING_KEY": "original_string",
+            "INT_KEY": 42,
+            "BOOL_KEY": False,
+            "UNCHANGED_KEY": "unchanged",
+        }
+
+        result = Config._override_with_env_vars(data)
+
+        assert result == {
+            "STRING_KEY": "overridden_string",
+            "INT_KEY": 999,
+            "BOOL_KEY": True,
+            "UNCHANGED_KEY": "unchanged",
+        }
+
+        # Verify logging calls
+        expected_bool_value = True
+        expected_int_value = 999
+
+        expected_calls = [
+            mocker.call(
+                "Config override: %s = %s (from environment)",
+                "STRING_KEY",
+                "overridden_string",
+            ),
+            mocker.call(
+                "Config override: %s = %s (from environment)",
+                "INT_KEY",
+                expected_int_value,
+            ),
+            mocker.call(
+                "Config override: %s = %s (from environment)",
+                "BOOL_KEY",
+                expected_bool_value,
+            ),
+        ]
+        mock_logger.info.assert_has_calls(expected_calls, any_order=True)
+
+    def test_override_with_env_vars_no_overrides(self, mocker: MockerFixture) -> None:
+        """Test _override_with_env_vars when no environment variables exist"""
+        mock_logger = mocker.patch("lib.config.logger")
+        mocker.patch("os.getenv", return_value=None)
+
+        data = {
+            "STRING_KEY": "original_string",
+            "INT_KEY": 42,
+            "BOOL_KEY": False,
+        }
+
+        result = Config._override_with_env_vars(data)
+
+        # Should return original data unchanged
+        assert result == data
+
+        # Should not log any overrides
+        mock_logger.info.assert_not_called()
+
+    def test_override_with_env_vars_nested_dictionaries(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Test _override_with_env_vars with nested dictionaries"""
+        mock_logger = mocker.patch("lib.config.logger")
+
+        # Mock environment variables with prefixes
+        env_vars = {
+            "SECTION1_KEY1": "overridden1",
+            "SECTION1_SUBSECTION_KEY2": "overridden2",
+            "SECTION2_KEY3": "42",
+        }
+        mocker.patch("os.getenv", side_effect=lambda key: env_vars.get(key))
+
+        data = {
+            "SECTION1": {
+                "KEY1": "original1",
+                "SUBSECTION": {
+                    "KEY2": "original2",
+                    "KEY3": "unchanged3",
+                },
+            },
+            "SECTION2": {
+                "KEY3": 0,
+                "KEY4": "unchanged4",
+            },
+            "TOP_LEVEL": "unchanged_top",
+        }
+
+        result = Config._override_with_env_vars(data)
+
+        expected = {
+            "SECTION1": {
+                "KEY1": "overridden1",
+                "SUBSECTION": {
+                    "KEY2": "overridden2",
+                    "KEY3": "unchanged3",
+                },
+            },
+            "SECTION2": {
+                "KEY3": 42,
+                "KEY4": "unchanged4",
+            },
+            "TOP_LEVEL": "unchanged_top",
+        }
+
+        assert result == expected
+
+        # Verify logging calls with correct prefixes
+        expected_calls = [
+            mocker.call(
+                "Config override: %s = %s (from environment)",
+                "SECTION1_KEY1",
+                "overridden1",
+            ),
+            mocker.call(
+                "Config override: %s = %s (from environment)",
+                "SECTION1_SUBSECTION_KEY2",
+                "overridden2",
+            ),
+            mocker.call(
+                "Config override: %s = %s (from environment)", "SECTION2_KEY3", 42
+            ),
+        ]
+        mock_logger.info.assert_has_calls(expected_calls, any_order=True)
+
+    def test_override_with_env_vars_with_custom_prefix(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Test _override_with_env_vars with a custom prefix"""
+        mock_logger = mocker.patch("lib.config.logger")
+
+        # Mock environment variables with a custom prefix
+        env_vars = {
+            "CUSTOM_KEY1": "overridden1",
+            "CUSTOM_KEY2": "123",
+        }
+        mocker.patch("os.getenv", side_effect=lambda key: env_vars.get(key))
+
+        data = {
+            "KEY1": "original1",
+            "KEY2": 0,
+        }
+
+        result = Config._override_with_env_vars(data, prefix="CUSTOM_")
+
+        expected = {
+            "KEY1": "overridden1",
+            "KEY2": 123,
+        }
+
+        assert result == expected
+
+        # Verify logging calls with a custom prefix
+        expected_calls = [
+            mocker.call(
+                "Config override: %s = %s (from environment)",
+                "CUSTOM_KEY1",
+                "overridden1",
+            ),
+            mocker.call(
+                "Config override: %s = %s (from environment)", "CUSTOM_KEY2", 123
+            ),
+        ]
+        mock_logger.info.assert_has_calls(expected_calls, any_order=True)
+
+    def test_override_with_env_vars_mixed_scenarios(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Test _override_with_env_vars with mixed scenarios (some exist, some don't)"""
+        mock_logger = mocker.patch("lib.config.logger")
+
+        # Mock environment variables - only some exist
+        env_vars = {
+            "KEY1": "overridden",
+            "NESTED_KEY3": "true",
+            # KEY2 and NESTED_KEY4 don't have env vars
+        }
+        mocker.patch("os.getenv", side_effect=lambda key: env_vars.get(key))
+
+        data = {
+            "KEY1": "original1",
+            "KEY2": "original2",
+            "NESTED": {
+                "KEY3": False,
+                "KEY4": "original4",
+            },
+        }
+
+        result = Config._override_with_env_vars(data)
+
+        expected = {
+            "KEY1": "overridden",
+            "KEY2": "original2",  # unchanged
+            "NESTED": {
+                "KEY3": True,  # overridden
+                "KEY4": "original4",  # unchanged
+            },
+        }
+
+        assert result == expected
+
+        # Verify only the overridden keys are logged
+        expected_bool_value = True
+        expected_calls = [
+            mocker.call(
+                "Config override: %s = %s (from environment)", "KEY1", "overridden"
+            ),
+            mocker.call(
+                "Config override: %s = %s (from environment)",
+                "NESTED_KEY3",
+                expected_bool_value,
+            ),
+        ]
+        mock_logger.info.assert_has_calls(expected_calls, any_order=True)
+        assert mock_logger.info.call_count == 2
+
+    def test_override_with_env_vars_empty_data(self, mocker: MockerFixture) -> None:
+        """Test _override_with_env_vars with empty data dictionary"""
+        mock_logger = mocker.patch("lib.config.logger")
+        mocker.patch("os.getenv", return_value=None)
+
+        result = Config._override_with_env_vars({})
+
+        assert result == {}
+        mock_logger.info.assert_not_called()
+
+    def test_override_with_env_vars_deeply_nested(self, mocker: MockerFixture) -> None:
+        """Test _override_with_env_vars with deeply nested dictionaries"""
+        mock_logger = mocker.patch("lib.config.logger")
+
+        # Mock environment variables with deep nesting
+        env_vars = {
+            "LEVEL1_LEVEL2_LEVEL3_DEEP_KEY": "deep_override",
+        }
+        mocker.patch("os.getenv", side_effect=lambda key: env_vars.get(key))
+
+        data = {
+            "LEVEL1": {
+                "LEVEL2": {
+                    "LEVEL3": {
+                        "DEEP_KEY": "original_deep",
+                        "OTHER_KEY": "unchanged",
+                    },
+                },
+            },
+        }
+
+        result = Config._override_with_env_vars(data)
+
+        expected = {
+            "LEVEL1": {
+                "LEVEL2": {
+                    "LEVEL3": {
+                        "DEEP_KEY": "deep_override",
+                        "OTHER_KEY": "unchanged",
+                    },
+                },
+            },
+        }
+
+        assert result == expected
+
+        # Verify logging with the full prefix chain
+        mock_logger.info.assert_called_once_with(
+            "Config override: %s = %s (from environment)",
+            "LEVEL1_LEVEL2_LEVEL3_DEEP_KEY",
+            "deep_override",
+        )

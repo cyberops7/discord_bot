@@ -71,6 +71,9 @@ env = [
     "PYTEST_THEME=emacs",
     "PYTEST_THEME_MODE=dark",
 ]
+filterwarnings = [
+    "ignore::pytest.PytestUnraisableExceptionWarning"
+]
 markers = [
     "no_mock_config: exclude the mock_config fixture",
 ]

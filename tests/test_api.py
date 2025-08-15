@@ -1,16 +1,12 @@
 """Unit tests for api.py"""
 
 import asyncio
-import builtins
 import gc
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
-from unittest.mock import AsyncMock, Mock
-
-if TYPE_CHECKING:
-    from unittest.mock import MagicMock
+from typing import cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from discord import ClientUser
@@ -38,23 +34,6 @@ def finalize_mocks() -> Generator[None, None, None]:  # noqa: UP043
         if isinstance(obj, AsyncMock) and obj.await_count == 0:
             with suppress(RuntimeError):  # Ignore if an event loop is already closed
                 asyncio.run(obj())
-
-
-@pytest.fixture
-def mock_os_getenv(mocker: MockerFixture) -> Callable[[str, str | None], Mock]:
-    """Fixture to mock lib.api.os.getenv for specific keys."""
-
-    def apply_patch(key: str, value: str | None) -> Mock:
-        original_getenv = builtins.__import__(
-            "os"
-        ).getenv  # Access the original without being mocked
-        patch = mocker.patch("lib.api.os.getenv", autospec=True)
-        patch.side_effect = (
-            lambda k, default=None: value if k == key else original_getenv(k, default)
-        )
-        return patch
-
-    return apply_patch
 
 
 @pytest.fixture
@@ -87,14 +66,11 @@ def test_api_client(test_api_app: FastAPI) -> TestClient:
 
 
 @async_test
-async def test_lifespan_success(
-    mocker: MockerFixture, mock_os_getenv: Callable[[str, str | None], Mock]
-) -> None:
+async def test_lifespan_success(mocker: MockerFixture) -> None:
     """Test successful lifespan startup and shutdown"""
     mock_logger = mocker.patch("lib.api.logger")
 
     # Mock dependencies
-    mock_getenv = mock_os_getenv("BOT_TOKEN", "test_token")
     mock_intents = mocker.patch("lib.api.Intents")
     mock_intents.all.return_value = "mock_intents"
 
@@ -117,7 +93,6 @@ async def test_lifespan_success(
         mock_discord_bot.assert_called_once_with(
             command_prefix="!", intents="mock_intents"
         )
-        mock_getenv.assert_called_once_with("BOT_TOKEN")
         mock_bot.start.assert_called_once_with("test_token", reconnect=True)
 
         # Verify bot is assigned to FastAPI state
@@ -139,11 +114,10 @@ async def test_lifespan_success(
 
 @async_test
 async def test_lifespan_no_bot_token(
-    mocker: MockerFixture, mock_os_getenv: Callable[[str, str | None], Mock]
+    mocker: MockerFixture, mock_config: MagicMock
 ) -> None:
     """Test lifespan raises RuntimeError when BOT_TOKEN is not set"""
-    # Mock only "BOT_TOKEN" to return "test_token"
-    mock_getenv = mock_os_getenv("BOT_TOKEN", None)
+    mock_config.BOT_TOKEN = ""
 
     # Mock dependencies
     mock_logger = mocker.patch("lib.api.logger")
@@ -168,7 +142,6 @@ async def test_lifespan_no_bot_token(
     # Ensure initialization still happened
     mock_intents.all.assert_called_once()
     mock_discord_bot.assert_called_once_with(command_prefix="!", intents="mock_intents")
-    mock_getenv.assert_called_once_with("BOT_TOKEN")
 
 
 @async_test
@@ -182,15 +155,6 @@ async def test_lifespan_cleanup_on_exception(mocker: MockerFixture) -> None:
     mock_bot.start = AsyncMock()
     mock_bot.close = AsyncMock()
     mock_discord_bot = mocker.patch("lib.api.DiscordBot", return_value=mock_bot)
-
-    # Mock environment variable for BOT_TOKEN
-    # A more complicated patch, so we don't mess up pytest loading its own env vars
-    mock_getenv = mocker.patch("lib.api.os.getenv")
-    mock_getenv.configure_mock(
-        side_effect=lambda key, default=None: "test_token"
-        if key == "BOT_TOKEN"
-        else default,
-    )
 
     mocker.patch("lib.api.asyncio.create_task", side_effect=asyncio.create_task)
 
@@ -212,7 +176,6 @@ async def test_lifespan_cleanup_on_exception(mocker: MockerFixture) -> None:
 
     mock_bot.close.assert_called_once()
     mock_discord_bot.assert_called_once_with(command_prefix="!", intents="mock_intents")
-    mock_getenv.assert_called_once_with("BOT_TOKEN")
     mock_bot.start.assert_called_once_with("test_token", reconnect=True)
 
     expected_logs = [
