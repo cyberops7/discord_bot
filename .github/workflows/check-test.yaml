@@ -133,7 +133,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Set up any needed environment variables
+      # Set up any necessary environment variables
       - name: Set Env Vars
         run: |
           echo "Set up env vars"
@@ -189,7 +189,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Set up any needed environment variables
+      # Set up any necessary environment variables
       - name: Set Env Vars
         run: |
           echo "Set up env vars"

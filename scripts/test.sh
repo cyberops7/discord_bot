@@ -63,14 +63,19 @@ if $USE_DOCKER; then
         -v "${REPO_DIR}/pyproject.toml:/app/pyproject.toml" \
         -v "${REPO_DIR}/uv.lock:/app/uv.lock" \
         "${IMAGE_NAME}:${TAG}"
+    EXIT_CODE=$?
 else
     info "Running tests directly (local environment)..."
     # Run tests directly in the local environment using uv
     which python3
     info "Running pytest..."
     COLUMNS=$(tput cols) uv run pytest
+    EXIT_CODE=$?
 
     note "You can access the HTML coverage report one of two ways:"
     note "     In the terminal, run: 'open htmlcov/index.html'"
     note "     Paste into your browser: file:///${REPO_DIR}/htmlcov/index.html"
 fi
+
+# Exit with the same code as the test command
+exit $EXIT_CODE

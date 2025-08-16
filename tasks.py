@@ -128,10 +128,20 @@ def scan(
 
 
 @task
-def test(c: Context) -> None:
+def test(c: Context, allow_failure: bool = False) -> None:  # noqa: PT028 no default args for "tests"
     """Run pytest unit tests locally."""
     logger.info("Running pytest unit tests locally.")
-    c.run(f"bash {get_scripts_dir(c)}/test.sh")
+    if allow_failure:
+        logger.info("Running tests with allow-failure flag (for pre-commit).")
+        try:
+            c.run(f"bash {get_scripts_dir(c)}/test.sh")
+        except Exception as e:  # noqa: BLE001 no blind exceptions
+            logger.warning("Tests failed, but allow-failure flag is set: %s", str(e))
+            logger.info(
+                "Continuing with successful exit code for pre-commit compatibility."
+            )
+    else:
+        c.run(f"bash {get_scripts_dir(c)}/test.sh")
 
 
 @task

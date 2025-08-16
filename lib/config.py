@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import os
 import tomllib
 from datetime import tzinfo
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import yaml
+from dotenv import load_dotenv
 
 # change this to DEBUG if debugging config initialization
 logger: logging.Logger = logging.getLogger(__name__)
@@ -79,6 +81,9 @@ class Config:
     def __new__(cls) -> Optional["Config"]:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            # Load .env contents into system ENV before loading config
+            # This allows config to use environment variable overrides from .env files
+            load_dotenv(override=True)
             cls._load_config()
         return cls._instance
 
@@ -89,6 +94,87 @@ class Config:
         """Override the default config and pyproject paths for testing"""
         cls._config_path = config_path
         cls._pyproject_path = pyproject_path
+
+    @classmethod
+    def _override_with_env_vars(
+        cls, data: dict[str, Any], prefix: str = ""
+    ) -> dict[str, Any]:
+        """
+        Recursively check all configuration keys against environment variables.
+        If an environment variable exists for a config key, override the config value.
+
+        Args:
+            data: Configuration dictionary to check
+            prefix: Current nested key prefix (for nested dictionaries)
+
+        Returns:
+            Updated configuration dictionary with environment variable overrides
+        """
+        result = {}
+
+        for key, value in data.items():
+            # Build the environment variable name
+            env_key = f"{prefix}{key}" if prefix else key
+
+            if isinstance(value, dict):
+                # Recursively handle nested dictionaries
+                result[key] = cls._override_with_env_vars(value, f"{env_key}_")
+            else:
+                # Check if an environment variable exists for this key
+                env_value = os.getenv(env_key)
+                if env_value is not None:
+                    # Convert environment variable value to appropriate type
+                    converted_value = cls._convert_env_value(env_value, value)
+                    result[key] = converted_value
+                    logger.info(
+                        "Config override: %s = %s (from environment)",
+                        env_key,
+                        converted_value,
+                    )
+                else:
+                    result[key] = value
+
+        return result
+
+    @classmethod
+    def _convert_env_value(cls, env_value: str, original_value: Any) -> Any:
+        """
+        Convert an environment variable string value to an appropriate type
+        based on the original value.
+
+        Args:
+            env_value: String value from environment variable
+            original_value: Original value from config file to determine the target type
+
+        Returns:
+            Converted value in the appropriate type
+        """
+        # Handle boolean values
+        if isinstance(original_value, bool):
+            return env_value.lower() in ("true", "1", "yes", "on")
+
+        # Handle integer values
+        if isinstance(original_value, int):
+            try:
+                return int(env_value)
+            except ValueError:
+                logger.warning(
+                    "Could not convert env var '%s' to int, using string", env_value
+                )
+                return env_value
+
+        # Handle float values
+        if isinstance(original_value, float):
+            try:
+                return float(env_value)
+            except ValueError:
+                logger.warning(
+                    "Could not convert env var '%s' to float, using string", env_value
+                )
+                return env_value
+
+        # Default to string
+        return env_value
 
     @classmethod
     def _load_config(cls) -> None:
@@ -111,6 +197,9 @@ class Config:
         # Load version from pyproject.toml
         version = cls._load_version_from_pyproject()
         raw_data["VERSION"] = version
+
+        # Override configuration values with environment variables if they exist
+        raw_data = cls._override_with_env_vars(raw_data)
 
         # Convert a timezone string to a timezone object and replace it
         tz_string = raw_data.get("TIMEZONE", "UTC")

@@ -1,207 +1,24 @@
 """Unit tests for bot.py"""
 
 import datetime
+import importlib
 import logging
-from collections.abc import Iterator
-from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import ModuleType
+from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock, MagicMock
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import discord
 import pytest
-from discord import Intents
+from discord.ext import commands
 from pytest_mock import MockerFixture
 
-from lib.bot import DiscordBot, LogContext
+from lib.bot import DiscordBot
+from lib.bot_log_context import LogContext
 from lib.config import config
 from tests.utils import async_test
-
-
-def create_mock_user(name: str, user_id: int) -> MagicMock:
-    """
-    Helper function to create a mock discord.User
-    with proper string representation
-    """
-    user = MagicMock(spec=discord.Member)
-    user.display_name = name
-    user.name = name
-    user.id = user_id
-    user.mention = f"<@{user_id}>"
-    user.roles = []  # Set the role(s) as necessary in each test
-    user.send = AsyncMock()
-    user.__str__ = MagicMock(return_value=name)
-    return user
-
-
-@pytest.fixture
-def mock_bot_user() -> MagicMock:
-    """Mock discord.User fixture for the bot"""
-    return create_mock_user("TestBot", 12345)
-
-
-@pytest.fixture
-def mock_mod() -> MagicMock:
-    """Mock discord.User fixture for a moderator"""
-    return create_mock_user("TestMod", 54321)
-
-
-@pytest.fixture
-def mock_user() -> MagicMock:
-    """Mock discord.User fixture for a non-bot user"""
-    return create_mock_user("TestUser", 67890)
-
-
-@pytest.fixture
-def discord_bot(mock_bot_user: MagicMock) -> Iterator[DiscordBot]:
-    """DiscordBot fixture with mocked user property"""
-    intents: Intents = discord.Intents.default()
-    bot = DiscordBot(intents=intents)
-
-    with patch.object(type(bot), "user", mock_bot_user):
-        yield bot
-
-
-@pytest.fixture
-def mock_config(mocker: MockerFixture) -> MagicMock:
-    """Mock the config object"""
-    mock_config = mocker.patch("lib.bot.config")
-    mock_config.CHANNELS.BOT_LOGS = 101
-    mock_config.CHANNELS.BOT_PLAYGROUND = 123
-    mock_config.CHANNELS.MOUSETRAP = 456
-    mock_config.CHANNELS.RULES = 789
-    mock_config.ROLES.ADMIN = 11111
-    mock_config.ROLES.JIMS_GARAGE = 22222
-    mock_config.ROLES.MOD = 33333
-    mock_config.TIMEZONE = datetime.UTC
-    return mock_config
-
-
-@pytest.fixture
-def mock_channel(channel_id: int = 999) -> MagicMock:
-    """Mock discord.abc.Messageable fixture"""
-    channel = MagicMock(spec=discord.TextChannel)
-    channel.id = channel_id  # Default to None; set it as needed in tests
-    channel.mention = f"<#{channel_id}>"
-    channel.name = "test-channel"
-    channel.send = AsyncMock()
-    return channel
-
-
-@pytest.fixture(autouse=True)
-def mock_default_log_channel(
-    mocker: MockerFixture, mock_channel: MagicMock, mock_config: MagicMock
-) -> MagicMock:
-    """Mock the DiscordBot.default_log_channel class variable in bot.py"""
-    default_channel = mock_channel(
-        channel_id=mock_config.CHANNELS.BOT_LOGS
-    )  # Use BOT_LOGS channel ID
-    default_channel.send = AsyncMock()
-
-    mocker.patch("lib.bot.DiscordBot.default_log_channel", default_channel)
-
-    return default_channel
-
-
-@pytest.fixture
-def mock_message(mock_user: MagicMock, mock_channel: MagicMock) -> MagicMock:
-    """Mock discord.Message fixture"""
-    message = MagicMock(spec=discord.Message)
-    message.author = mock_user
-    message.channel = mock_channel
-    message.content = "test message"
-    return message
-
-
-class TestLogContext:
-    """Unit tests for the LogContext dataclass."""
-
-    @pytest.mark.usefixtures("mock_config")
-    def test_defaults(self, mock_default_log_channel: MagicMock) -> None:
-        """Test that LogContext initializes with default values."""
-        log_context = LogContext(log_message="Test log")
-
-        assert log_context.log_message == "Test log"
-        assert log_context.log_channel == mock_default_log_channel
-        assert log_context.level == "INFO"
-        assert log_context.action is None
-        assert log_context.user is None
-        assert log_context.channel is None
-        assert log_context.embed is False
-        assert log_context.color == discord.Color.blue()  # Default for level "INFO"
-
-    def test_missing_log_channel(
-        self,
-        mock_config: MagicMock,
-        mocker: MockerFixture,
-    ) -> None:
-        """
-        Test that an exception is raised if log_channel is missing
-        and DiscordBot.default_log_channel is None
-        """
-        # Temporarily patch DiscordBot.default_log_channel to None for this test
-        mocker.patch("lib.bot.DiscordBot.default_log_channel", None)
-        del mock_config.CHANNELS.BOT_LOGS
-
-        with pytest.raises(AttributeError, match="Logging channel not found"):
-            LogContext(log_message="Test log")
-
-    @pytest.mark.parametrize(
-        ("level", "expected_color"),
-        [
-            ("CRITICAL", discord.Color.dark_red()),
-            ("ERROR", discord.Color.red()),
-            ("WARNING", discord.Color.orange()),
-            ("INFO", discord.Color.blue()),
-            ("DEBUG", discord.Color.light_grey()),
-            ("INVALID", discord.Color.default()),  # Fallback to default
-        ],
-    )
-    def test_level_color(
-        self,
-        level: str,
-        expected_color: discord.Color,
-    ) -> None:
-        """Test that the correct color is assigned based on the log level."""
-        log_context = LogContext(log_message="Test log", level=level)
-        assert log_context.color == expected_color
-
-    def test_color_override(self) -> None:
-        """Test that the color can be overridden."""
-        log_context = LogContext(log_message="Test log", color=discord.Color.green())
-        assert log_context.color == discord.Color.green()
-
-    # TODO @Cyberops7: use mock_channel fixture
-    def test_user_and_channel_fields(self) -> None:
-        """Test that LogContext can set user and channel fields."""
-        mock_user = MagicMock(spec=discord.Member)
-        mock_user.mention = "@TestUser"
-        mock_user.id = 67890
-
-        mock_channel = MagicMock(spec=discord.TextChannel)
-        mock_channel.mention = "#general"
-        mock_channel.id = 12345
-
-        log_context = LogContext(
-            log_message="Test log",
-            user=mock_user,
-            channel=mock_channel,
-        )
-
-        assert log_context.user == mock_user
-        assert log_context.channel == mock_channel
-        assert log_context.user is not None, "User should not be None"
-        assert log_context.user.mention == "@TestUser"
-        assert log_context.channel is not None, "Channel should not be None"
-        assert log_context.channel.mention == "#general"
-
-    def test_embed_flag(self) -> None:
-        """Test the embed flag behavior in LogContext."""
-        log_context = LogContext(log_message="Test log", embed=True)
-        assert log_context.embed is True
-
-    def test_action_field(self) -> None:
-        """Test the action field is correctly initialized."""
-        log_context = LogContext(log_message="Test log", action="Custom Action")
-        assert log_context.action == "Custom Action"
 
 
 class TestDiscordBot:
@@ -332,16 +149,14 @@ class TestDiscordBot:
         assert result is None
 
     @async_test
-    @pytest.mark.usefixtures("mock_config")
     async def test_send_log_embed_basic(
         self,
         caplog: pytest.LogCaptureFixture,
-        mock_default_log_channel: MagicMock,
+        mock_config: MagicMock,
     ) -> None:
         """Test sending a basic log embed without user or channel details."""
         context = LogContext(
             log_message="Test log message",
-            log_channel=mock_default_log_channel,
             level="INFO",
             action="Test Action",
             embed=True,
@@ -350,12 +165,12 @@ class TestDiscordBot:
         with caplog.at_level(logging.INFO):
             result = await DiscordBot._send_log_embed(context)
 
-        mock_default_log_channel.send.assert_called_once()
-        embed = mock_default_log_channel.send.call_args[1]["embed"]
+        mock_config.LOG_CHANNEL.send.assert_called_once()
+        embed = mock_config.LOG_CHANNEL.send.call_args[1]["embed"]
         assert embed.title == "Test Action"
         assert embed.description == "Test log message"
         assert embed.color == discord.Color.blue()
-        assert result == mock_default_log_channel.send.return_value
+        assert result == mock_config.LOG_CHANNEL.send.return_value
 
         assert len(caplog.records) == 1
         assert (
@@ -363,10 +178,8 @@ class TestDiscordBot:
         )
 
     @async_test
-    async def test_send_log_embed_none_log_channel(self, mocker: MockerFixture) -> None:
+    async def test_send_log_embed_none_log_channel(self) -> None:
         """Test that _send_log_embed raises ValueError when log_channel is None."""
-        mocker.patch("lib.bot.DiscordBot.default_log_channel", None)
-
         # Create a context with a direct None log_channel
         # that will bypass the __post_init__ check
         context = MagicMock(spec=LogContext)
@@ -531,10 +344,10 @@ class TestDiscordBot:
         assert f"Sending text log message: {log_message}" in caplog.records[0].message
 
     @async_test
-    async def test_send_log_text_none_log_channel(self, mocker: MockerFixture) -> None:
+    async def test_send_log_text_none_log_channel(self, mock_config: MagicMock) -> None:
         """Test that _send_log_text raises ValueError when log_channel is None."""
-        # Temporarily patch default_log_channel to None
-        mocker.patch("lib.bot.DiscordBot.default_log_channel", None)
+        # Temporarily set the LOG_CHANNEL to None
+        mock_config.LOG_CHANNEL = None
 
         # Create a context with a direct None log_channel
         # that will bypass the __post_init__ check
@@ -1133,7 +946,6 @@ class TestDiscordBot:
         )
 
     @async_test
-    @pytest.mark.usefixtures("mock_config")
     async def test_ban_spammer_success(
         self,
         mocker: MockerFixture,
@@ -1178,7 +990,6 @@ class TestDiscordBot:
         )
 
     @async_test
-    @pytest.mark.usefixtures("mock_config")
     async def test_ban_spammer_forbidden(
         self,
         mocker: MockerFixture,
@@ -1224,7 +1035,6 @@ class TestDiscordBot:
         assert "Bot lacks permission to ban user" in caplog.records[2].message
 
     @async_test
-    @pytest.mark.usefixtures("mock_config")
     async def test_ban_spammer_http_exception(
         self,
         mocker: MockerFixture,
@@ -1269,26 +1079,58 @@ class TestDiscordBot:
         assert "HTTP error while banning user" in caplog.records[2].message
 
     @async_test
-    @pytest.mark.usefixtures("mock_config")
     async def test_on_ready(
         self,
         mocker: MockerFixture,
         caplog: pytest.LogCaptureFixture,
         discord_bot: DiscordBot,
-        mock_default_log_channel: MagicMock,
+        mock_config: MagicMock,
     ) -> None:
         """Test the on_ready method"""
         mocker.patch.object(
-            discord_bot, "_get_log_channel", return_value=mock_default_log_channel
+            discord_bot, "_get_log_channel", return_value=mock_config.LOG_CHANNEL
         )
+        mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
+        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.on_ready()
+
+        assert len(caplog.records) == 2
+        assert caplog.records[0].levelname == "INFO"
+        assert "We have logged in as TestBot" in caplog.records[0].message
+        assert caplog.records[1].levelname == "INFO"
+        assert "Registered commands:" in caplog.records[1].message
+        mock_load_cogs.assert_called_once()
+        mock_log_bot_event.assert_called_once()
+
+    @async_test
+    async def test_on_ready_no_user(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test the on_ready method when the bot has no user"""
+        mocker.patch.object(type(discord_bot), "user", None)
+        mocker.patch.object(
+            discord_bot, "_get_log_channel", return_value=mock_config.LOG_CHANNEL
+        )
+        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 1
-        assert caplog.records[0].levelname == "INFO"
-        assert "We have logged in as TestBot" in caplog.records[0].message
+        # Verify that the error message is logged when self.user is None
+        assert len(caplog.records) == 2
+        assert caplog.records[0].levelname == "ERROR"
+        assert "The bot user is not set" in caplog.records[0].message
+        assert caplog.records[1].levelname == "INFO"
+        assert "Registered commands:" in caplog.records[1].message
+
+        mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
 
     @async_test
@@ -1303,11 +1145,12 @@ class TestDiscordBot:
         # Mock get_channel to return None to simulate when the channel is not found
         mocker.patch.object(discord_bot, "_get_log_channel", return_value=None)
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
+        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 2
+        assert len(caplog.records) == 3
         assert caplog.records[0].levelname == "INFO"
         assert "We have logged in as TestBot" in caplog.records[0].message
         assert caplog.records[1].levelname == "WARNING"
@@ -1315,7 +1158,23 @@ class TestDiscordBot:
             f"Could not find log channel with ID {mock_config.CHANNELS.BOT_LOGS}"
             in caplog.records[1].message
         )
+        assert caplog.records[2].levelname == "INFO"
+        assert "Registered commands:" in caplog.records[2].message
+        mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
+
+    @async_test
+    async def test_on_ready_no_match(
+        self, mocker: MockerFixture, discord_bot: MagicMock, mock_message: MagicMock
+    ) -> None:
+        """Test the case where no conditions are matched"""
+        mock_ban_spammer = mocker.patch("lib.bot.DiscordBot.ban_spammer")
+        mock_process_commands = mocker.patch("lib.bot.DiscordBot.process_commands")
+
+        await discord_bot.on_message(mock_message)
+
+        mock_ban_spammer.assert_not_called()
+        mock_process_commands.assert_called_once()
 
     @async_test
     async def test_on_message_self_message_ignored(
@@ -1378,144 +1237,6 @@ class TestDiscordBot:
             f"in #mousetrap: {mock_message.content}"
         )
 
-    @async_test
-    async def test_on_message_hello_response(
-        self,
-        caplog: pytest.LogCaptureFixture,
-        discord_bot: DiscordBot,
-        mock_config: MagicMock,
-        mock_message: MagicMock,
-        mock_user: MagicMock,
-    ) -> None:
-        """Test that messages starting with 'hello' get a response"""
-        mock_message.author = mock_user
-        mock_message.channel.id = mock_config.CHANNELS.BOT_PLAYGROUND
-        mock_message.content = "hello world"
-
-        with caplog.at_level(logging.INFO):
-            await discord_bot.on_message(mock_message)
-
-        mock_message.channel.send.assert_called_once_with("Hello")
-        assert len(caplog.records) == 1
-        record = caplog.records[0]
-        assert record.levelname == "INFO"
-        assert record.message == "Received 'hello' from TestUser"
-        assert record.name == "lib.bot"
-
-    @async_test
-    @pytest.mark.parametrize(
-        "message_content",
-        [
-            "hello",
-            "Hello",
-            "HELLO",
-            "hello world",
-            "Hello there!",
-            "HELLO EVERYONE",
-        ],
-    )
-    async def test_on_message_hello_case_insensitive(
-        self,
-        discord_bot: DiscordBot,
-        mock_config: MagicMock,
-        mock_message: MagicMock,
-        mock_user: MagicMock,
-        message_content: str,
-    ) -> None:
-        """Test that 'hello' detection is case-insensitive"""
-        mock_message.author = mock_user
-        mock_message.channel.id = mock_config.CHANNELS.BOT_PLAYGROUND
-        mock_message.content = message_content
-
-        await discord_bot.on_message(mock_message)
-
-        mock_message.channel.send.assert_called_once_with("Hello")
-
-    @async_test
-    @pytest.mark.parametrize(
-        "message_content",
-        [
-            "hi there",
-            "goodbye",
-            "how are you",
-            "help",
-            "test message",
-            "heloworld",
-            "helo world",
-        ],
-    )
-    async def test_on_message_no_hello_no_response(
-        self,
-        caplog: pytest.LogCaptureFixture,
-        discord_bot: DiscordBot,
-        mock_config: MagicMock,
-        mock_message: MagicMock,
-        mock_user: MagicMock,
-        message_content: str,
-    ) -> None:
-        """Test that messages not starting with 'hello' don't get a response"""
-        mock_message.author = mock_user
-        mock_message.channel.id = mock_config.CHANNELS.BOT_PLAYGROUND
-        mock_message.content = message_content
-
-        await discord_bot.on_message(mock_message)
-
-        assert len(caplog.records) == 0
-        mock_message.channel.send.assert_not_called()
-
-    @async_test
-    async def test_on_message_ping_response(
-        self,
-        caplog: pytest.LogCaptureFixture,
-        discord_bot: DiscordBot,
-        mock_config: MagicMock,
-        mock_message: MagicMock,
-        mock_user: MagicMock,
-    ) -> None:
-        """Test that messages starting with 'ping' get a response"""
-        mock_message.author = mock_user
-        mock_message.channel.id = mock_config.CHANNELS.BOT_PLAYGROUND
-        mock_message.content = "ping"
-
-        with caplog.at_level(logging.INFO):
-            await discord_bot.on_message(mock_message)
-
-        mock_message.channel.send.assert_called_once_with("Pong")
-        assert len(caplog.records) == 1
-        record = caplog.records[0]
-        assert record.levelname == "INFO"
-        assert record.message == "Received 'ping' from TestUser"
-        assert record.name == "lib.bot"
-
-    @async_test
-    @pytest.mark.parametrize(
-        "message_content",
-        [
-            "ping",
-            "Ping",
-            "PING",
-            "ping pong",
-            "ping ping ping",
-        ],
-    )
-    async def test_on_message_ping_case_insensitive(
-        self,
-        discord_bot: DiscordBot,
-        mock_config: MagicMock,
-        mock_message: MagicMock,
-        mock_user: MagicMock,
-        message_content: str,
-    ) -> None:
-        """Test that 'ping' detection is case-insensitive"""
-        mock_message.author = mock_user
-        mock_message.channel.id = mock_config.CHANNELS.BOT_PLAYGROUND
-        mock_message.content = message_content
-
-        await discord_bot.on_message(mock_message)
-
-        mock_message.channel.send.assert_called_once_with("Pong")
-
-    @pytest.mark.usefixtures("mock_config")
     async def test_on_member_join(
         self,
         mocker: MockerFixture,
@@ -1541,7 +1262,6 @@ class TestDiscordBot:
             == f"Member {mock_user.display_name} ({mock_user}) joined the server"
         )
 
-    @pytest.mark.usefixtures("mock_config")
     async def test_on_member_join_no_rules_channel(
         self,
         mocker: MockerFixture,
@@ -1577,7 +1297,6 @@ class TestDiscordBot:
         assert caplog.records[0].levelname == "WARNING"
         assert "Could not find rules channel" in caplog.records[0].message
 
-    @pytest.mark.usefixtures("mock_config")
     async def test_on_member_join_dm_forbidden(
         self,
         mocker: MockerFixture,
@@ -1607,7 +1326,6 @@ class TestDiscordBot:
         assert "Could not send welcome message" in caplog.records[0].message
         assert "DMs may be disabled" in caplog.records[0].message
 
-    @pytest.mark.usefixtures("mock_config")
     async def test_on_member_join_dm_http_exception(
         self,
         mocker: MockerFixture,
@@ -1637,3 +1355,345 @@ class TestDiscordBot:
         assert caplog.records[0].levelname == "WARNING"
         assert "Failed to send welcome message" in caplog.records[0].message
         assert http_error in caplog.records[0].message
+
+    @async_test
+    async def test_load_cogs_directory_not_exists(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """Test _load_cogs when the cogs directory doesn't exist."""
+        # Mock Path.exists() to return False
+        mock_path = mocker.patch("lib.bot.Path")
+        mock_path.return_value.exists.return_value = False
+
+        with caplog.at_level(logging.WARNING):
+            await discord_bot._load_cogs()
+
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "WARNING"
+        assert "Cogs directory 'lib/cogs' does not exist" in caplog.records[0].message
+
+    @async_test
+    async def test_load_cogs_skip_dunder_files(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """Test _load_cogs skips files starting with '__'."""
+        # Mock Path and its methods
+        mock_path = mocker.patch("lib.bot.Path")
+        mock_cogs_dir = mock_path.return_value
+        mock_cogs_dir.exists.return_value = True
+
+        # Create mock files including __init__.py
+        mock_init_file = MagicMock()
+        mock_init_file.name = "__init__.py"
+        mock_init_file.stem = "__init__"
+
+        mock_regular_file = MagicMock()
+        mock_regular_file.name = "test_cog.py"
+        mock_regular_file.stem = "test_cog"
+
+        mock_cogs_dir.glob.return_value = [mock_init_file, mock_regular_file]
+
+        # Track calls to importlib.import_module for cog modules specifically
+        original_import: Callable[[str], ModuleType] = importlib.import_module
+        cog_import_calls: list[str] = []
+
+        def import_side_effect(name: str) -> ModuleType:
+            if name.startswith("lib.cogs."):
+                cog_import_calls.append(name)
+                return MagicMock()
+            return original_import(name)
+
+        mocker.patch("lib.bot.importlib.import_module", side_effect=import_side_effect)
+
+        # Mock dir() to return empty list (no cog classes)
+        mocker.patch("lib.bot.dir", return_value=[])
+
+        with caplog.at_level(logging.WARNING):
+            await discord_bot._load_cogs()
+
+        # Verify __init__.py was skipped (import_module called only once for test_cog)
+        assert cog_import_calls == ["lib.cogs.test_cog"]
+
+        # Verify warning logged for no cog class found
+        assert any(
+            "No valid Cog class found" in record.message for record in caplog.records
+        )
+
+    @async_test
+    async def test_load_cogs_successful_loading(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """Test _load_cogs successfully loads a valid cog."""
+        # Mock Path and its methods
+        mock_path = mocker.patch("lib.bot.Path")
+        mock_cogs_dir = mock_path.return_value
+        mock_cogs_dir.exists.return_value = True
+
+        mock_file = MagicMock()
+        mock_file.name = "test_cog.py"
+        mock_file.stem = "test_cog"
+        mock_cogs_dir.glob.return_value = [mock_file]
+
+        original_import: Callable[[str], ModuleType] = importlib.import_module
+
+        def import_side_effect(name: str) -> ModuleType:
+            if name.startswith("lib.cogs."):
+                return MagicMock()
+            return original_import(name)
+
+        mocker.patch("lib.bot.importlib.import_module", side_effect=import_side_effect)
+
+        # Create a mock Cog class
+        mock_cog_class = MagicMock()
+        mock_cog_class.__name__ = "TestCog"
+        mock_cog_class.__bases__ = (commands.Cog,)
+        mock_cog_instance = MagicMock()
+        mock_cog_class.return_value = mock_cog_instance
+
+        # Mock dir() to return the cog class
+        mocker.patch("lib.bot.dir", return_value=["TestCog"])
+        # Mock getattr to return our mock cog class
+        mocker.patch("lib.bot.getattr", return_value=mock_cog_class)
+        # Mock isinstance and issubclass
+        mocker.patch("lib.bot.isinstance", return_value=True)
+        mocker.patch("lib.bot.issubclass", return_value=True)
+
+        # Mock add_cog method
+        mock_add_cog = mocker.patch.object(discord_bot, "add_cog", AsyncMock())
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot._load_cogs()
+
+        # Verify cog was loaded
+        mock_cog_class.assert_called_once_with(discord_bot)
+        mock_add_cog.assert_called_once_with(mock_cog_instance)
+
+        # Verify success logs
+        assert any(
+            "Loaded cog: TestCog from lib.cogs.test_cog" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            "Successfully loaded 1 cogs: TestCog" in record.message
+            for record in caplog.records
+        )
+
+    @async_test
+    async def test_load_cogs_no_valid_cog_class(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """Test _load_cogs when a module has no valid Cog class."""
+        # Mock Path and its methods
+        mock_path = mocker.patch("lib.bot.Path")
+        mock_cogs_dir = mock_path.return_value
+        mock_cogs_dir.exists.return_value = True
+
+        mock_file = MagicMock()
+        mock_file.name = "invalid_cog.py"
+        mock_file.stem = "invalid_cog"
+        mock_cogs_dir.glob.return_value = [mock_file]
+
+        # Mock importlib.import_module
+        mock_import = mocker.patch("lib.bot.importlib.import_module")
+        mock_module = MagicMock()
+        mock_import.return_value = mock_module
+
+        # Mock dir() to return some attributes but none are valid cogs
+        mocker.patch("lib.bot.dir", return_value=["SomeClass", "some_function"])
+
+        # Mock getattr and isinstance/issubclass to return invalid cog
+        def mock_getattr_side_effect(name: str) -> MagicMock:
+            if name == "SomeClass":
+                return MagicMock()
+            return MagicMock()
+
+        mocker.patch("lib.bot.getattr", side_effect=mock_getattr_side_effect)
+        mocker.patch("lib.bot.isinstance", return_value=False)
+
+        with caplog.at_level(logging.WARNING):
+            await discord_bot._load_cogs()
+
+        # Verify warning logged for no valid cog class
+        assert any(
+            "No valid Cog class found in lib.cogs.invalid_cog" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            "Failed to load 1 cogs: invalid_cog" in record.message
+            for record in caplog.records
+        )
+
+    @async_test
+    @pytest.mark.parametrize(
+        ("exception", "exception_type"),
+        [
+            (ImportError("Module not found"), ImportError),
+            (ModuleNotFoundError("No module named"), ModuleNotFoundError),
+            (AttributeError("Attribute error"), AttributeError),
+            (TypeError("Type error"), TypeError),
+            (discord.ClientException("Discord client error"), discord.ClientException),
+        ],
+    )
+    async def test_load_cogs_import_exceptions(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        exception: Exception,
+        exception_type: type[Exception],
+    ) -> None:
+        """Test _load_cogs handles various import exceptions."""
+        # Mock Path and its methods
+        mock_path = mocker.patch("lib.bot.Path")
+        mock_cogs_dir = mock_path.return_value
+        mock_cogs_dir.exists.return_value = True
+
+        mock_file = MagicMock()
+        mock_file.name = "broken_cog.py"
+        mock_file.stem = "broken_cog"
+        mock_cogs_dir.glob.return_value = [mock_file]
+
+        original_import: Callable[[str], ModuleType] = importlib.import_module
+
+        def import_side_effect(name: str) -> ModuleType:
+            if name.startswith("lib.cogs."):
+                raise exception
+            return original_import(name)
+
+        mocker.patch("lib.bot.importlib.import_module", side_effect=import_side_effect)
+
+        with caplog.at_level(logging.WARNING):
+            await discord_bot._load_cogs()
+
+        # Verify exception was logged
+        assert any(
+            "Failed to load cog from lib.cogs.broken_cog" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            "Failed to load 1 cogs: broken_cog" in record.message
+            for record in caplog.records
+        )
+        assert isinstance(exception, exception_type)
+
+    @async_test
+    async def test_load_cogs_mixed_results(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """Test _load_cogs with mixed successful and failed cog loading."""
+        # Mock Path and its methods
+        mock_path = mocker.patch("lib.bot.Path")
+        mock_cogs_dir = mock_path.return_value
+        mock_cogs_dir.exists.return_value = True
+
+        # Create multiple mock files
+        mock_good_file = MagicMock()
+        mock_good_file.name = "good_cog.py"
+        mock_good_file.stem = "good_cog"
+
+        mock_bad_file = MagicMock()
+        mock_bad_file.name = "bad_cog.py"
+        mock_bad_file.stem = "bad_cog"
+
+        mock_dunder_file = MagicMock()
+        mock_dunder_file.name = "__pycache__"
+        mock_dunder_file.stem = "__pycache__"
+
+        mock_cogs_dir.glob.return_value = [
+            mock_good_file,
+            mock_bad_file,
+            mock_dunder_file,
+        ]
+
+        original_import: Callable[[str], ModuleType] = importlib.import_module
+
+        def import_side_effect(module_name: str) -> ModuleType:
+            if module_name.startswith("lib.cogs."):
+                if "good_cog" in module_name:
+                    return MagicMock()
+                if "bad_cog" in module_name:
+                    msg = "Failed to import"
+                    raise ImportError(msg)
+                return MagicMock()
+            return original_import(module_name)
+
+        mocker.patch("lib.bot.importlib.import_module", side_effect=import_side_effect)
+
+        # Mock successful cog loading for good_cog
+        def dir_side_effect(_module: object) -> list[str]:
+            return ["GoodCog"]
+
+        def getattr_side_effect(_module: object, _attr_name: str) -> MagicMock:
+            mock_cog_class = MagicMock()
+            mock_cog_class.__name__ = "GoodCog"
+            mock_cog_class.__bases__ = (commands.Cog,)
+            return mock_cog_class
+
+        mocker.patch("lib.bot.dir", side_effect=dir_side_effect)
+        mocker.patch("lib.bot.getattr", side_effect=getattr_side_effect)
+        mocker.patch("lib.bot.isinstance", return_value=True)
+        mocker.patch("lib.bot.issubclass", return_value=True)
+
+        # Mock add_cog method
+        mock_add_cog = mocker.patch.object(discord_bot, "add_cog", AsyncMock())
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot._load_cogs()
+
+        mock_add_cog.assert_called_once()
+
+        # Verify both success and failure logs
+        assert any(
+            "Loaded cog: GoodCog from lib.cogs.good_cog" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            "Successfully loaded 1 cogs: GoodCog" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            "Failed to load cog from lib.cogs.bad_cog" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            "Failed to load 1 cogs: bad_cog" in record.message
+            for record in caplog.records
+        )
+
+    @async_test
+    async def test_load_cogs_no_cogs_to_load(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """Test _load_cogs when the directory exists but has no Python files."""
+        # Mock Path and its methods
+        mock_path = mocker.patch("lib.bot.Path")
+        mock_cogs_dir = mock_path.return_value
+        mock_cogs_dir.exists.return_value = True
+        mock_cogs_dir.glob.return_value = []  # No files found
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot._load_cogs()
+
+        # Should complete without any logging since no cogs were loaded or failed
+        assert not any(
+            "Successfully loaded" in record.message for record in caplog.records
+        )
+        assert not any("Failed to load" in record.message for record in caplog.records)

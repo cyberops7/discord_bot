@@ -53,6 +53,7 @@ def test_ensure_valid_port_invalid_type(invalid_port: str | float) -> None:
         match=f"Port must be an integer, but got "
         f"{type(invalid_port).__name__}: {invalid_port}",
     ):
+        # noinspection PyTypeChecker
         ensure_valid_port(invalid_port)  # pyre-ignore[6]
 
 
@@ -66,6 +67,7 @@ def test_validate_port_invalid_type(mocker: MockerFixture) -> None:
     mock_exit = mocker.patch("sys.exit")
     mock_logger = mocker.patch("lib.utils.logger")
 
+    # noinspection PyTypeChecker
     validate_port(bad_port)  # pyre-ignore[6]: Expected 'int', got 'str'
     mock_exit.assert_called_once_with(1)
     expected_logs = [
