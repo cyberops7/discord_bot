@@ -118,7 +118,9 @@ class DiscordBot(commands.Bot):
         logger.info("Registered commands: %s", msg)
 
         await self.log_bot_event(
-            level="INFO", event="Bot Startup", details=f"Version {config.VERSION}"
+            level="INFO",
+            event="Bot Startup",
+            details=f"Version {config.VERSION}{' - DRY_RUN' if config.DRY_RUN else ''}",
         )
 
     async def close(self) -> None:

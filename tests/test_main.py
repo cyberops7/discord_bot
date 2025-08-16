@@ -114,3 +114,88 @@ def test_invalid_port(mocker: MockerFixture) -> None:
         ValueError, match=r"invalid literal for int\(\) with base 10: \'invalid\'"
     ):
         main()
+
+
+def test_main_dry_run_mode(
+    mocker: MockerFixture,
+    mock_common_calls: tuple[Mock, Mock],
+    mock_logger: Mock,
+    mock_uvicorn: Mock,
+) -> None:
+    """Test main() execution when DRY_RUN is enabled"""
+    # Unpack the mocks from the fixture
+    mock_config_class, mock_configure_logger = mock_common_calls
+
+    # Configure the mock config instance with DRY_RUN enabled
+    mock_config_instance = Mock()
+    mock_config_instance.API_PORT = 8000
+    mock_config_instance.DRY_RUN = True
+    mock_config_class.return_value = mock_config_instance
+
+    # Mock validate_port to return a specific value
+    mocker.patch("main.validate_port", return_value=8000)
+
+    # Call the main function
+    main()
+
+    # Verify expected log messages including the dry-run message
+    expected_logs = [
+        mocker.call.info("Running in dry-run mode."),
+        mocker.call.info("Configuring logger..."),
+        mocker.call.info("Starting FastAPI server..."),
+    ]
+    mock_logger.assert_has_calls(expected_logs, any_order=False)
+
+    # Verify that uvicorn.run was called with the correct parameters
+    mock_uvicorn.assert_called_once_with(
+        mocker.ANY,  # app
+        host="0.0.0.0",  # noqa: S104
+        port=8000,
+        log_config=None,
+    )
+
+    # Verify Config was instantiated
+    mock_config_class.assert_called_once()
+    mock_configure_logger.assert_called_once()
+
+
+def test_main_dry_run_disabled(
+    mocker: MockerFixture,
+    mock_common_calls: tuple[Mock, Mock],
+    mock_logger: Mock,
+    mock_uvicorn: Mock,
+) -> None:
+    """Test main() execution when DRY_RUN is disabled"""
+    # Unpack the mocks from the fixture
+    mock_config_class, mock_configure_logger = mock_common_calls
+
+    # Configure the mock config instance with DRY_RUN disabled
+    mock_config_instance = Mock()
+    mock_config_instance.API_PORT = 8000
+    mock_config_instance.DRY_RUN = False
+    mock_config_class.return_value = mock_config_instance
+
+    # Mock validate_port to return a specific value
+    mocker.patch("main.validate_port", return_value=8000)
+
+    # Call the main function
+    main()
+
+    # Verify expected log messages (should NOT include dry-run message)
+    expected_logs = [
+        mocker.call.info("Configuring logger..."),
+        mocker.call.info("Starting FastAPI server..."),
+    ]
+    mock_logger.assert_has_calls(expected_logs, any_order=False)
+
+    # Verify that uvicorn.run was called with the correct parameters
+    mock_uvicorn.assert_called_once_with(
+        mocker.ANY,  # app
+        host="0.0.0.0",  # noqa: S104
+        port=8000,
+        log_config=None,
+    )
+
+    # Verify Config was instantiated
+    mock_config_class.assert_called_once()
+    mock_configure_logger.assert_called_once()

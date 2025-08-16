@@ -17,6 +17,8 @@ def main() -> None:
     """Main driver function"""
     # Initialize config (this loads .env contents into system ENV)
     config = Config()
+    if config.DRY_RUN:
+        logger.info("Running in dry-run mode.")
 
     # Set up logging
     logger.info("Configuring logger...")
