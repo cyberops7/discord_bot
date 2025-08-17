@@ -53,7 +53,7 @@ spec:
       containers:
         - name: bot
           # TODO @cyberops7: figure out how to ignore AVD-KSV-0125 (Trivy)
-          image: ghcr.io/cyberops7/discord_bot:v0.4.0
+          image: ghcr.io/cyberops7/discord_bot:v0.5.0
           imagePullPolicy: Always
           env:
             - name: BOT_TOKEN
@@ -106,7 +106,7 @@ spec:
             readOnlyRootFilesystem: true
           volumeMounts:
             - name: bot-storage
-              mountPath: /.cache/uv
+              mountPath: /app/.cache/uv
               subPath: uv-cache
             - name: bot-storage
               mountPath: /app/log

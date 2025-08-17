@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +11,7 @@ from pydantic import BaseModel
 from starlette.datastructures import State as StarletteState
 
 from lib.bot import DiscordBot
+from lib.config import config
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -33,12 +33,11 @@ async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
 
     # Initialize the bot with the necessary intents
     intents = Intents.all()
-    bot = DiscordBot(intents=intents)
+    bot = DiscordBot(command_prefix="!", intents=intents)
 
     # Retrieve the bot token from environment variables
     logger.info("Retrieving bot token...")
-    bot_token = os.getenv("BOT_TOKEN")
-    if not bot_token:
+    if not config.BOT_TOKEN:
         msg = "BOT_TOKEN is required to start the bot."
         logger.error(msg)
         raise RuntimeError(msg)
@@ -46,7 +45,7 @@ async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
     # Start the bot
     logger.info("Starting Discord bot...")
     # Start the bot asynchronously (in the background) to not block 'app's lifespan
-    bot_task = asyncio.create_task(bot.start(bot_token))
+    bot_task = asyncio.create_task(bot.start(config.BOT_TOKEN, reconnect=True))
 
     # Save the bot instance to FastAPI's state
     api_app.state = AppState(bot=bot)
@@ -86,7 +85,7 @@ class HealthCheckResponse(BaseModel):
 @app.get("/healthcheck")
 async def healthcheck(request: Request) -> JSONResponse:
     """
-    Healthcheck endpoint that uses the Discord bot instance to check readiness.
+    Health check endpoint that uses the Discord bot instance to check readiness.
     """
     bot = request.app.state.bot
     if bot.is_ready():

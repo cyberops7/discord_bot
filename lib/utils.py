@@ -11,6 +11,7 @@ logger: Logger = logging.getLogger(__name__)
 
 def ensure_valid_port(port: int) -> int:
     """Raise TypeError or ValueError if a port is invalid."""
+    # noinspection PyUnreachableCode
     if not isinstance(port, int):
         msg = f"Port must be an integer, but got {type(port).__name__}: {port}"
         raise TypeError(msg)
