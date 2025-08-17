@@ -1,4 +1,4 @@
-"""Unit tests for the tasks.py"""
+"""Unit tests for the tasks.py - Consolidated version"""
 
 import datetime
 import importlib
@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
+from pytest_mock import MockerFixture
 
 from lib.bot import DiscordBot
 from lib.cogs.tasks import Tasks
@@ -29,25 +30,21 @@ def tasks_cog(discord_bot: DiscordBot) -> Tasks:
 
 
 @pytest.fixture
-def mock_member_old_no_garage_role() -> MagicMock:
-    """
-    Mock a member who joined over a week ago and does not have
-    the Garage Member role
-    """
+def mock_member_bot(mock_config: MagicMock) -> MagicMock:
+    """Mock a member who is a Bot"""
     member = MagicMock(spec=discord.Member)
-    member.display_name = "OldMember"
-    member.id = 12345
-    member.__str__ = MagicMock(return_value="OldMember#1234")
+    member.display_name = "BotMember"
+    member.id = 11111
+    member.__str__ = MagicMock(return_value="BotMember#1111")
 
-    # Joined 2 weeks ago (static old date)
-    member.joined_at = datetime.datetime(2023, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
+    # Joined 2 weeks ago but is a Bot
+    member.joined_at = datetime.datetime.now(
+        tz=mock_config.TIMEZONE
+    ) - datetime.timedelta(weeks=2)
+    bot_role = MagicMock()
+    bot_role.id = mock_config.ROLES.BOTS
+    member.roles = [bot_role]
 
-    # No Garage Member role, no Bot role
-    role1 = MagicMock()
-    role1.id = 99999  # Some other role
-    member.roles = [role1]
-
-    # Mock methods
     member.send = AsyncMock()
     member.kick = AsyncMock()
 
@@ -79,7 +76,33 @@ def mock_member_new() -> MagicMock:
 
 
 @pytest.fixture
-def mock_member_with_garage_role(mock_config: MagicMock) -> MagicMock:
+def mock_member_old_kickable() -> MagicMock:
+    """
+    Mock a member who joined over a week ago and does not have
+    the Garage Member role - should be kicked
+    """
+    member = MagicMock(spec=discord.Member)
+    member.display_name = "OldMember"
+    member.id = 12345
+    member.__str__ = MagicMock(return_value="OldMember#1234")
+
+    # Joined 2 weeks ago (static old date)
+    member.joined_at = datetime.datetime(2023, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
+
+    # No Garage Member role, no Bot role
+    role1 = MagicMock()
+    role1.id = 99999  # Some other role
+    member.roles = [role1]
+
+    # Mock methods
+    member.send = AsyncMock()
+    member.kick = AsyncMock()
+
+    return member
+
+
+@pytest.fixture
+def mock_member_garage(mock_config: MagicMock) -> MagicMock:
     """Mock a member who has the Garage Member role"""
     member = MagicMock(spec=discord.Member)
     member.display_name = "GarageMember"
@@ -100,84 +123,55 @@ def mock_member_with_garage_role(mock_config: MagicMock) -> MagicMock:
     return member
 
 
-@pytest.fixture
-def mock_member_bot(mock_config: MagicMock) -> MagicMock:
-    """Mock a member who is a Bot"""
+def create_test_member(
+    name: str,
+    member_id: int,
+    joined_at: datetime.datetime | None = None,
+    roles: list[discord.Role] | None = None,
+) -> MagicMock:
+    """Helper function to create test members"""
     member = MagicMock(spec=discord.Member)
-    member.display_name = "BotMember"
-    member.id = 11111
-    member.__str__ = MagicMock(return_value="BotMember#1111")
-
-    # Joined 2 weeks ago but is a Bot
-    member.joined_at = datetime.datetime.now(
-        tz=mock_config.TIMEZONE
-    ) - datetime.timedelta(weeks=2)
-    bot_role = MagicMock()
-    bot_role.id = mock_config.ROLES.BOTS
-    member.roles = [bot_role]
-
+    member.display_name = name
+    member.id = member_id
+    member.__str__ = MagicMock(return_value=f"{name}#{member_id}")
+    member.joined_at = joined_at
+    member.roles = roles or [MagicMock()]
     member.send = AsyncMock()
     member.kick = AsyncMock()
-
     return member
 
 
 class TestTasks:
     """Test cases for the Tasks cog."""
 
-    def test_cog_initialization_normal_mode(
-        self, discord_bot: DiscordBot, mock_config: MagicMock
+    @pytest.mark.parametrize("dry_run", [True, False])
+    def test_cog_initialization(
+        self, discord_bot: DiscordBot, mock_config: MagicMock, dry_run: bool
     ) -> None:
-        """
-        Test that the Tasks cog initializes correctly and starts
-        the correct task in normal mode
-        """
-        mock_config.DRY_RUN = False
+        """Test that the Tasks cog initializes correctly in both modes"""
+        mock_config.DRY_RUN = dry_run
 
         with patch("discord.ext.tasks.Loop.start") as mock_start:
             cog = Tasks(discord_bot)
             assert cog is not None
             assert isinstance(cog, Tasks)
-            # Verify that the normal task would be started
-            # (patched, so we can't verify directly)
             assert mock_start.call_count == 1
 
-    def test_cog_initialization_dry_run_mode(
-        self, discord_bot: DiscordBot, mock_config: MagicMock
-    ) -> None:
-        """
-        Test that the Tasks cog initializes correctly
-        and starts the correct task in DRY_RUN mode
-        """
-        mock_config.DRY_RUN = True
-
-        with patch("discord.ext.tasks.Loop.start") as mock_start:
-            cog = Tasks(discord_bot)
-            assert cog is not None
-            assert isinstance(cog, Tasks)
-            # Verify that the dry_run task would be started
-            # (patched, so we can't verify directly)
-            assert mock_start.call_count == 1
-
+    @pytest.mark.parametrize("dry_run", [True, False])
     @async_test
-    async def test_cog_unload_normal_mode(
-        self, tasks_cog: Tasks, mock_config: MagicMock
+    async def test_cog_unload(
+        self, tasks_cog: Tasks, mock_config: MagicMock, dry_run: bool
     ) -> None:
-        """Test that cog_unload cancels the correct task in normal mode"""
-        mock_config.DRY_RUN = False
+        """Test that cog_unload cancels the correct task"""
+        mock_config.DRY_RUN = dry_run
         await tasks_cog.cog_unload()
-        tasks_cog.clean_channel_members_task.cancel.assert_called_once()
-        tasks_cog.clean_channel_members_task_dry_run.cancel.assert_not_called()
 
-    @async_test
-    async def test_cog_unload_dry_run_mode(
-        self, tasks_cog: Tasks, mock_config: MagicMock
-    ) -> None:
-        """Test that cog_unload cancels the correct task in DRY_RUN mode"""
-        mock_config.DRY_RUN = True
-        await tasks_cog.cog_unload()
-        tasks_cog.clean_channel_members_task_dry_run.cancel.assert_called_once()
-        tasks_cog.clean_channel_members_task.cancel.assert_not_called()
+        if dry_run:
+            tasks_cog.clean_channel_members_task_dry_run.cancel.assert_called_once()
+            tasks_cog.clean_channel_members_task.cancel.assert_not_called()
+        else:
+            tasks_cog.clean_channel_members_task.cancel.assert_called_once()
+            tasks_cog.clean_channel_members_task_dry_run.cancel.assert_not_called()
 
     @async_test
     async def test_before_clean_channel_members(
@@ -198,51 +192,40 @@ class TestTasks:
         assert record.message == "clean_channel_members task is starting up..."
         assert record.name == "lib.cogs.tasks"
 
+    @pytest.mark.parametrize(
+        ("is_sunday", "should_run"),
+        [
+            (False, False),  # Monday - shouldn't run
+            (True, True),  # Sunday - should run
+        ],
+    )
     @async_test
-    async def test_clean_channel_members_task_not_sunday(
+    async def test_clean_channel_members_task_weekday_logic(
         self,
         tasks_cog: Tasks,
         mock_config: MagicMock,
+        is_sunday: bool,
+        should_run: bool,
     ) -> None:
-        """Test that clean_channel_members_task does nothing when it's not Sunday"""
-        # Mock it to be Monday (weekday = 0)
-        mock_monday = datetime.datetime(
-            2023, 1, 2, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Monday
+        """Test that clean_channel_members_task only runs on Sunday"""
+        # Mock the appropriate day
+        mock_day = datetime.datetime(
+            2023, 1, 8 if is_sunday else 2, 17, 0, 0, tzinfo=mock_config.TIMEZONE
+        )  # Sunday vs Monday
 
         with patch("lib.cogs.tasks.datetime.datetime") as mock_dt:
-            mock_dt.now.return_value = mock_monday
+            mock_dt.now.return_value = mock_day
 
-            # Mock the implementation method to verify it's not called
-            tasks_cog._clean_channel_members = AsyncMock()
+            # Mock the _get_channel_members_to_kick method
+            tasks_cog._get_channel_members_to_kick = AsyncMock(return_value=set())
+            tasks_cog.bot.log_bot_event = AsyncMock()
 
             await tasks_cog.clean_channel_members_task()
 
-            # Verify the implementation method was not called
-            tasks_cog._clean_channel_members.assert_not_called()
-
-    @async_test
-    async def test_clean_channel_members_task_sunday(
-        self,
-        tasks_cog: Tasks,
-        mock_config: MagicMock,
-    ) -> None:
-        """Test that clean_channel_members_task calls implementation on Sunday"""
-        # Mock it to be Sunday (weekday = 6)
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Sunday
-
-        with patch("lib.cogs.tasks.datetime.datetime") as mock_dt:
-            mock_dt.now.return_value = mock_sunday
-
-            # Mock the implementation method
-            tasks_cog._clean_channel_members = AsyncMock()
-
-            await tasks_cog.clean_channel_members_task()
-
-            # Verify the implementation method was called
-            tasks_cog._clean_channel_members.assert_called_once()
+            if should_run:
+                tasks_cog._get_channel_members_to_kick.assert_called_once()
+            else:
+                tasks_cog._get_channel_members_to_kick.assert_not_called()
 
     @async_test
     async def test_clean_channel_members_task_dry_run_always_runs(
@@ -250,433 +233,306 @@ class TestTasks:
         tasks_cog: Tasks,
         mock_config: MagicMock,
     ) -> None:
-        """
-        Test that clean_channel_members_task_dry_run always calls implementation,
-        regardless of day
-        """
-        # Mock it to be Monday (weekday = 0)
+        """Test that dry_run task always runs regardless of day"""
+        # Mock it to be Monday
         mock_monday = datetime.datetime(
             2023, 1, 2, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Monday
+        )
+
+        tasks_cog._get_channel_members_to_kick = AsyncMock(return_value=set())
+        tasks_cog.bot.log_bot_event = AsyncMock()
 
         with patch("lib.cogs.tasks.datetime.datetime") as mock_dt:
             mock_dt.now.return_value = mock_monday
 
-            # Mock the implementation method
-            tasks_cog._clean_channel_members = AsyncMock()
-
             await tasks_cog.clean_channel_members_task_dry_run()
 
-            # Verify the implementation method was called even on Monday
-            tasks_cog._clean_channel_members.assert_called_once()
+        # Should run even on Monday
+        tasks_cog._get_channel_members_to_kick.assert_called_once()
 
     @async_test
-    async def test_clean_channel_members_task_dry_run_sunday(
+    async def test_get_channel_members_to_kick_guild_not_found(
         self,
         tasks_cog: Tasks,
         mock_config: MagicMock,
     ) -> None:
         """
-        Test that clean_channel_members_task_dry_run calls implementation on Sunday too
+        Test that _get_channel_members_to_kick raises ValueError when guild not found
         """
-        # Mock it to be Sunday (weekday = 6)
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Sunday
-
-        with patch("lib.cogs.tasks.datetime.datetime") as mock_dt:
-            mock_dt.now.return_value = mock_sunday
-
-            # Mock the implementation method
-            tasks_cog._clean_channel_members = AsyncMock()
-
-            await tasks_cog.clean_channel_members_task_dry_run()
-
-            # Verify the implementation method was called
-            tasks_cog._clean_channel_members.assert_called_once()
-
-    @async_test
-    async def test_clean_channel_members_implementation_with_guild(
-        self,
-        caplog: pytest.LogCaptureFixture,
-        tasks_cog: Tasks,
-        mock_config: MagicMock,
-        mock_guild: MagicMock,
-        mock_member_new: MagicMock,
-    ) -> None:
-        """Test that the implementation method works correctly with proper setup"""
-        # Mock it to be Sunday
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Sunday
-
-        # Set up a guild with members who shouldn't be kicked
-        mock_guild.members = [mock_member_new]
-        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
-        tasks_cog.bot.log_bot_event = AsyncMock()
-
-        with patch("datetime.datetime") as mock_dt, caplog.at_level(logging.INFO):
-            mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
-
-            await tasks_cog._clean_channel_members()
-
-        # Should call bot methods and log properly
-        tasks_cog.bot.get_guild.assert_called_once()
-        assert (
-            len([r for r in caplog.records if "Cleaning channel members" in r.message])
-            == 1
-        )
-
-    @async_test
-    async def test_clean_channel_members_guild_not_found(
-        self,
-        tasks_cog: Tasks,
-        mock_config: MagicMock,
-    ) -> None:
-        """Test that task raises ValueError when guild is not found"""
-        # Mock it to be Sunday (weekday = 6)
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Sunday
-
         tasks_cog.bot.get_guild = MagicMock(return_value=None)
 
-        with patch("datetime.datetime") as mock_dt:
-            mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
-
-            with pytest.raises(
-                ValueError,
-                match=f"Guild with ID {mock_config.GUILDS.JIMS_GARAGE} not found",
-            ):
-                await tasks_cog._clean_channel_members()
-
-    @async_test
-    async def test_clean_channel_members_no_members_to_kick(
-        self,
-        caplog: pytest.LogCaptureFixture,
-        tasks_cog: Tasks,
-        mock_config: MagicMock,
-        mock_guild: MagicMock,
-        mock_member_new: MagicMock,
-        mock_member_with_garage_role: MagicMock,
-    ) -> None:
-        """Test task when there are no members to kick"""
-        # Mock it to be Sunday
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Sunday
-
-        # Set up a guild with members who shouldn't be kicked
-        mock_guild.members = [mock_member_new, mock_member_with_garage_role]
-        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
-        tasks_cog.bot.log_bot_event = AsyncMock()
-
-        with patch("datetime.datetime") as mock_dt, caplog.at_level(logging.INFO):
-            mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
-
-            await tasks_cog._clean_channel_members()
-
-        # Verify logging
-        assert (
-            len([r for r in caplog.records if "Cleaning channel members" in r.message])
-            == 1
-        )
-        assert len([r for r in caplog.records if "Cleaned 0 members" in r.message]) == 1
-
-        # Verify bot event logging
-        assert tasks_cog.bot.log_bot_event.call_count == 2  # type: ignore[attr-defined]
-        tasks_cog.bot.log_bot_event.assert_any_call(event="Task - Member Cleanup")
-        tasks_cog.bot.log_bot_event.assert_any_call(
-            event="Task - Member Cleanup", details="Cleaned 0 members."
-        )
-
-        # Verify no members were kicked
-        mock_member_new.kick.assert_not_called()
-        mock_member_with_garage_role.kick.assert_not_called()
-
-    @async_test
-    async def test_clean_channel_members_kicks_eligible_member(
-        self,
-        caplog: pytest.LogCaptureFixture,
-        tasks_cog: Tasks,
-        mock_config: MagicMock,
-        mock_guild: MagicMock,
-        mock_member_old_no_garage_role: MagicMock,
-    ) -> None:
-        """Test task kicks eligible members and sends DM"""
-        # Mock it to be Sunday
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Sunday
-
-        # Set up guild with member who should be kicked
-        mock_guild.members = [mock_member_old_no_garage_role]
-        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
-        tasks_cog.bot.log_bot_event = AsyncMock()
-
-        with (
-            patch("lib.cogs.tasks.datetime.datetime") as mock_dt,
-            patch("lib.cogs.tasks.asyncio.sleep") as mock_sleep,
-            caplog.at_level(logging.INFO),
+        with pytest.raises(
+            ValueError,
+            match=f"Guild with ID {mock_config.GUILDS.JIMS_GARAGE} not found",
         ):
-            mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
+            await tasks_cog._get_channel_members_to_kick()
 
-            await tasks_cog._clean_channel_members()
-
-        # Verify rate limiting sleep was called
-        mock_sleep.assert_called_once_with(0.2)
-
-        # Verify DM was sent
-        expected_dm = (
-            "You have been removed from the Jim's Garage server "
-            "because you joined over a week ago and haven't accepted "
-            "the rules. If you believe this was a mistake, please "
-            "feel free to rejoin the server and reach out to a mod."
-        )
-        mock_member_old_no_garage_role.send.assert_called_once_with(expected_dm)
-
-        # Verify member was kicked
-        mock_member_old_no_garage_role.kick.assert_called_once_with(
-            reason="Member has not accepted the rules in over a week."
-        )
-
-        # Verify logging
-        log_messages = [r.message for r in caplog.records]
-        assert any("Cleaning channel members" in msg for msg in log_messages)
-        assert any("Sent DM to OldMember" in msg for msg in log_messages)
-        assert any("Kicked OldMember" in msg for msg in log_messages)
-        assert any("Cleaned 1 members" in msg for msg in log_messages)
-
+    @pytest.mark.parametrize(
+        ("member_fixture_name", "should_be_kicked"),
+        [
+            ("mock_member_new", False),  # Recent member - safe
+            ("mock_member_bot", False),  # Bot member - safe
+            ("mock_member_garage", False),  # Has garage role - safe
+            (
+                "mock_member_old_kickable",
+                True,
+            ),  # Old member without garage role - kicked
+        ],
+    )
     @async_test
-    async def test_clean_channel_members_dm_forbidden(
+    async def test_get_channel_members_to_kick_member_filtering(
         self,
         caplog: pytest.LogCaptureFixture,
         tasks_cog: Tasks,
-        mock_config: MagicMock,
         mock_guild: MagicMock,
-        mock_member_old_no_garage_role: MagicMock,
+        request: pytest.FixtureRequest,
+        member_fixture_name: str,
+        should_be_kicked: bool,
     ) -> None:
-        """Test task handles DM sending failure (Forbidden)"""
-        # Mock it to be Sunday
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )
-
-        # Set up a member to raise Forbidden when sending DM
-        mock_member_old_no_garage_role.send.side_effect = discord.Forbidden(
-            MagicMock(), "Cannot send messages to this user"
-        )
-
-        mock_guild.members = [mock_member_old_no_garage_role]
+        """Test member filtering logic using existing fixtures"""
+        member = request.getfixturevalue(member_fixture_name)
+        mock_guild.members = [member]
         tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
         tasks_cog.bot.log_bot_event = AsyncMock()
 
-        with (
-            patch("lib.cogs.tasks.datetime.datetime") as mock_dt,
-            patch("lib.cogs.tasks.asyncio.sleep"),
-            caplog.at_level(logging.WARNING),
-        ):
-            mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
+        with caplog.at_level(logging.INFO):
+            kick_list = await tasks_cog._get_channel_members_to_kick()
 
-            await tasks_cog._clean_channel_members()
-
-        # Verify member was still kicked despite DM failure
-        mock_member_old_no_garage_role.kick.assert_called_once()
-
-        # Verify warning was logged
-        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warning_records) == 1
-        assert "Could not send DM to OldMember" in warning_records[0].message
-        assert "DMs may be disabled or bot is blocked" in warning_records[0].message
+        assert isinstance(kick_list, set)
+        if should_be_kicked:
+            assert len(kick_list) == 1
+            assert member in kick_list
+        else:
+            assert len(kick_list) == 0
+            assert member not in kick_list
 
     @async_test
-    async def test_clean_channel_members_dm_http_exception(
+    async def test_get_channel_members_to_kick_member_no_joined_time(
         self,
         caplog: pytest.LogCaptureFixture,
         tasks_cog: Tasks,
-        mock_config: MagicMock,
-        mock_guild: MagicMock,
-        mock_member_old_no_garage_role: MagicMock,
-    ) -> None:
-        """Test task handles DM sending failure (HTTPException)"""
-        # Mock it to be Sunday
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )
-
-        # Set up member to raise HTTPException when sending DM
-        http_error = discord.HTTPException(MagicMock(), "HTTP error")
-        mock_member_old_no_garage_role.send.side_effect = http_error
-
-        mock_guild.members = [mock_member_old_no_garage_role]
-        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
-        tasks_cog.bot.log_bot_event = AsyncMock()
-
-        with (
-            patch("lib.cogs.tasks.datetime.datetime") as mock_dt,
-            patch("lib.cogs.tasks.asyncio.sleep"),
-            caplog.at_level(logging.WARNING),
-        ):
-            mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
-
-            await tasks_cog._clean_channel_members()
-
-        # Verify member was still kicked despite DM failure
-        mock_member_old_no_garage_role.kick.assert_called_once()
-
-        # Verify warning was logged
-        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warning_records) == 1
-        assert "Failed to send DM to OldMember:" in warning_records[0].message
-
-    @async_test
-    async def test_clean_channel_members_member_no_joined_time(
-        self,
-        tasks_cog: Tasks,
-        mock_config: MagicMock,
         mock_guild: MagicMock,
     ) -> None:
-        """Test task skips members with no joined_at time"""
-        # Mock it to be Sunday
-        mock_sunday = datetime.datetime(
-            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )
-
-        # Create a member with no `joined_at` time
+        """Test _get_channel_members_to_kick skips members with no joined_at time"""
         member_no_join = MagicMock(spec=discord.Member)
         member_no_join.joined_at = None
-        member_no_join.kick = AsyncMock()
 
         mock_guild.members = [member_no_join]
         tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
         tasks_cog.bot.log_bot_event = AsyncMock()
 
-        with patch("datetime.datetime") as mock_dt:
-            mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
+        with caplog.at_level(logging.WARNING):
+            kick_list = await tasks_cog._get_channel_members_to_kick()
 
-            await tasks_cog._clean_channel_members()
+        assert len(kick_list) == 0
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warning_records) == 1
+        assert "has no `joined_at` timestamp" in warning_records[0].message
 
-        # Verify the member was not kicked
-        member_no_join.kick.assert_not_called()
-
+    @pytest.mark.parametrize(
+        ("member_count", "dry_run"),
+        [
+            (0, False),  # No members to kick - normal mode
+            (0, True),  # No members to kick - dry run mode
+            (1, False),  # Single member - normal mode
+            (1, True),  # Single member - dry run mode
+            (2, False),  # Multiple members - normal mode
+            (2, True),  # Multiple members - dry run mode
+        ],
+    )
     @async_test
-    async def test_clean_channel_members_dry_run_with_eligible_member(
+    async def test_clean_channel_members_task_execution(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+        mock_member_old_kickable: MagicMock,
+        member_count: int,
+        dry_run: bool,
+    ) -> None:
+        """Test task execution with various member counts and modes"""
+        # Mock it to be Sunday for normal mode
+        mock_sunday = datetime.datetime(
+            2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
+        )
+
+        # Create test members
+        members = set()
+        if member_count > 0:
+            members.add(mock_member_old_kickable)
+        if member_count > 1:
+            member2 = create_test_member(
+                "Member2", 67890, datetime.datetime(2023, 1, 2, tzinfo=datetime.UTC)
+            )
+            members.add(member2)
+
+        tasks_cog._get_channel_members_to_kick = AsyncMock(return_value=members)
+        mock_log_bot_event = mocker.patch.object(
+            tasks_cog.bot, "log_bot_event", new=AsyncMock()
+        )
+
+        if not dry_run:
+            with (
+                patch("lib.cogs.tasks.asyncio.sleep") as mock_sleep,
+                patch("lib.cogs.tasks.datetime.datetime") as mock_dt,
+                caplog.at_level(logging.INFO),
+            ):
+                mock_dt.now.return_value = mock_sunday
+                await tasks_cog.clean_channel_members_task()
+                event_name = "Task - Member Cleanup"
+                log_prefix = ""
+        else:
+            with (
+                patch("lib.cogs.tasks.asyncio.sleep") as mock_sleep,
+                caplog.at_level(logging.INFO),
+            ):
+                await tasks_cog.clean_channel_members_task_dry_run()
+                event_name = "Task - Member Cleanup (DRY_RUN)"
+                log_prefix = "DRY_RUN: Would have "
+
+        # Verify sleep called for each member
+        assert mock_sleep.call_count == member_count
+
+        # Verify member actions
+        for member in members:
+            if dry_run:
+                member.send.assert_not_called()
+                member.kick.assert_not_called()
+            elif member_count > 0:
+                member.send.assert_called_once()
+                member.kick.assert_called_once()
+
+        # Verify logging
+        if member_count > 0:
+            log_messages = [r.message for r in caplog.records]
+            expected_cleaned_msg = (
+                f"{log_prefix}cleaned {member_count} members"
+                if log_prefix
+                else f"Cleaned {member_count} members"
+            )
+            assert any(
+                expected_cleaned_msg.lower() in msg.lower() for msg in log_messages
+            )
+
+        # Verify bot event logging
+        mock_log_bot_event.assert_called_with(
+            event=event_name,
+            details=f"{'Would have c' if dry_run else 'C'}"
+            f"leaned {member_count} members.",
+        )
+
+    @pytest.mark.parametrize(
+        "exception_type",
+        [
+            discord.Forbidden,
+            discord.HTTPException,
+        ],
+    )
+    @async_test
+    async def test_clean_channel_members_task_dm_exceptions(
         self,
         caplog: pytest.LogCaptureFixture,
         tasks_cog: Tasks,
         mock_config: MagicMock,
-        mock_guild: MagicMock,
-        mock_member_old_no_garage_role: MagicMock,
+        mock_member_old_kickable: MagicMock,
+        exception_type: type[Exception],
     ) -> None:
-        """Test task in DRY_RUN mode logs actions but doesn't perform them"""
-        # Set DRY_RUN to True
-        mock_config.DRY_RUN = True
-
-        # Mock it to be Sunday
+        """Test DM sending failure handling"""
         mock_sunday = datetime.datetime(
             2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Sunday
+        )
 
-        # Set up guild with member who should be kicked
-        mock_guild.members = [mock_member_old_no_garage_role]
-        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
+        # Set up the exception
+        if exception_type == discord.Forbidden:
+            mock_member_old_kickable.send.side_effect = discord.Forbidden(
+                MagicMock(), "Cannot send messages to this user"
+            )
+            expected_log = "Could not send DM to OldMember"
+        else:  # HTTPException
+            mock_member_old_kickable.send.side_effect = discord.HTTPException(
+                MagicMock(), "HTTP error"
+            )
+            expected_log = "Failed to send DM to OldMember:"
+
+        tasks_cog._get_channel_members_to_kick = AsyncMock(
+            return_value={mock_member_old_kickable}
+        )
         tasks_cog.bot.log_bot_event = AsyncMock()
 
         with (
             patch("lib.cogs.tasks.datetime.datetime") as mock_dt,
-            patch("lib.cogs.tasks.asyncio.sleep") as mock_sleep,
-            caplog.at_level(logging.INFO),
+            patch("lib.cogs.tasks.asyncio.sleep"),
+            caplog.at_level(logging.WARNING),
         ):
             mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
+            await tasks_cog.clean_channel_members_task()
 
-            await tasks_cog._clean_channel_members()
+        # Verify member was still kicked despite DM failure
+        mock_member_old_kickable.kick.assert_called_once()
 
-        # Verify rate limiting sleep was still called
-        mock_sleep.assert_called_once_with(0.2)
-
-        # Verify NO DM was sent, and NO kick occurred (DRY_RUN mode)
-        mock_member_old_no_garage_role.send.assert_not_called()
-        mock_member_old_no_garage_role.kick.assert_not_called()
-
-        # Verify DRY_RUN logging messages
-        log_messages = [r.message for r in caplog.records]
-        assert any("Cleaning channel members" in msg for msg in log_messages)
-        assert any(
-            "DRY_RUN: Would have sent DM to OldMember" in msg for msg in log_messages
-        )
-        assert any(
-            "DRY_RUN: Would have kicked OldMember" in msg for msg in log_messages
-        )
-        assert any(
-            "DRY_RUN: Would have cleaned 1 members" in msg for msg in log_messages
-        )
-
-        # Verify bot event logging for DRY_RUN
-        assert tasks_cog.bot.log_bot_event.call_count == 2  # type: ignore[attr-defined]
-        tasks_cog.bot.log_bot_event.assert_any_call(event="Task - Member Cleanup")
-        tasks_cog.bot.log_bot_event.assert_any_call(
-            event="Task - Member Cleanup (DRY_RUN)",
-            details="Would have cleaned 1 members.",
-        )
+        # Verify warning was logged
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warning_records) == 1
+        assert expected_log in warning_records[0].message
 
     @async_test
-    async def test_clean_channel_members_dry_run_no_eligible_members(
+    async def test_clean_channel_members_task_member_no_join_date_logging(
         self,
         caplog: pytest.LogCaptureFixture,
         tasks_cog: Tasks,
         mock_config: MagicMock,
-        mock_guild: MagicMock,
-        mock_member_new: MagicMock,
-        mock_member_with_garage_role: MagicMock,
     ) -> None:
-        """Test task in DRY_RUN mode when there are no eligible members to process"""
-        # Set DRY_RUN to True
-        mock_config.DRY_RUN = True
-
-        # Mock it to be Sunday
+        """Test logging for a member with no join date shows 'Unknown'"""
         mock_sunday = datetime.datetime(
             2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
-        )  # Sunday
+        )
 
-        # Set up a guild with members who shouldn't be kicked
-        mock_guild.members = [mock_member_new, mock_member_with_garage_role]
-        tasks_cog.bot.get_guild = MagicMock(return_value=mock_guild)
+        # Create a member with no joined_at date
+        member = create_test_member("MemberNoDate", 1234, joined_at=None)
+
+        tasks_cog._get_channel_members_to_kick = AsyncMock(return_value={member})
         tasks_cog.bot.log_bot_event = AsyncMock()
 
-        with patch("datetime.datetime") as mock_dt, caplog.at_level(logging.INFO):
+        with (
+            patch("lib.cogs.tasks.datetime.datetime") as mock_dt,
+            patch("lib.cogs.tasks.asyncio.sleep"),
+            caplog.at_level(logging.INFO),
+        ):
             mock_dt.now.return_value = mock_sunday
-            mock_dt.timedelta = datetime.timedelta
+            await tasks_cog.clean_channel_members_task()
 
-            await tasks_cog._clean_channel_members()
-
-        # Verify logging
+        # Verify logging shows "Unknown" for join date
         log_messages = [r.message for r in caplog.records]
-        assert any("Cleaning channel members" in msg for msg in log_messages)
         assert any(
-            "DRY_RUN: Would have cleaned 0 members" in msg for msg in log_messages
+            "Kicked MemberNoDate" in msg and "Unknown" in msg for msg in log_messages
         )
 
-        # Verify bot event logging for DRY_RUN with 0 members
-        assert tasks_cog.bot.log_bot_event.call_count == 2  # type: ignore[attr-defined]
-        tasks_cog.bot.log_bot_event.assert_any_call(event="Task - Member Cleanup")
-        tasks_cog.bot.log_bot_event.assert_any_call(
-            event="Task - Member Cleanup (DRY_RUN)",
-            details="Would have cleaned 0 members.",
-        )
+    @async_test
+    async def test_clean_channel_members_task_dry_run_member_no_join_date_logging(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test dry run logging for a member with no join date shows 'Unknown'"""
+        # Create a member with no joined_at date
+        member = create_test_member("DryRunMemberNoDate", 1234, joined_at=None)
 
-        # Verify no members were processed
-        mock_member_new.kick.assert_not_called()
-        mock_member_new.send.assert_not_called()
-        mock_member_with_garage_role.kick.assert_not_called()
-        mock_member_with_garage_role.send.assert_not_called()
+        tasks_cog._get_channel_members_to_kick = AsyncMock(return_value={member})
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with (
+            patch("lib.cogs.tasks.asyncio.sleep"),
+            caplog.at_level(logging.INFO),
+        ):
+            await tasks_cog.clean_channel_members_task_dry_run()
+
+        # Verify DRY_RUN logging shows "Unknown" for join date
+        log_messages = [r.message for r in caplog.records]
+        assert any(
+            "DRY_RUN: Would have kicked DryRunMemberNoDate" in msg and "Unknown" in msg
+            for msg in log_messages
+        )
 
     def test_type_checking_import_coverage(self) -> None:
         """Test to ensure TYPE_CHECKING import block is covered"""

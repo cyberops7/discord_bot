@@ -1092,17 +1092,23 @@ class TestDiscordBot:
         )
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
         mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
+        mock_sync_commands = mocker.patch.object(
+            discord_bot.tree, "sync", return_value=[]
+        )
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 2
+        assert len(caplog.records) == 3
         assert caplog.records[0].levelname == "INFO"
         assert "We have logged in as TestBot" in caplog.records[0].message
         assert caplog.records[1].levelname == "INFO"
-        assert "Registered commands:" in caplog.records[1].message
+        assert "Synced 0 commands:" in caplog.records[1].message
+        assert caplog.records[2].levelname == "INFO"
+        assert "Registered commands:" in caplog.records[2].message
         mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
+        mock_sync_commands.assert_called_once()
 
     @async_test
     async def test_on_ready_no_user(
@@ -1119,19 +1125,25 @@ class TestDiscordBot:
         )
         mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
+        mock_sync_commands = mocker.patch.object(
+            discord_bot.tree, "sync", return_value=[]
+        )
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
         # Verify that the error message is logged when self.user is None
-        assert len(caplog.records) == 2
+        assert len(caplog.records) == 3
         assert caplog.records[0].levelname == "ERROR"
         assert "The bot user is not set" in caplog.records[0].message
         assert caplog.records[1].levelname == "INFO"
-        assert "Registered commands:" in caplog.records[1].message
+        assert "Synced 0 commands:" in caplog.records[1].message
+        assert caplog.records[2].levelname == "INFO"
+        assert "Registered commands:" in caplog.records[2].message
 
         mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
+        mock_sync_commands.assert_called_once()
 
     @async_test
     async def test_on_ready_no_default_channel(
@@ -1146,11 +1158,14 @@ class TestDiscordBot:
         mocker.patch.object(discord_bot, "_get_log_channel", return_value=None)
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
         mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
+        mock_sync_commands = mocker.patch.object(
+            discord_bot.tree, "sync", return_value=[]
+        )
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 3
+        assert len(caplog.records) == 4
         assert caplog.records[0].levelname == "INFO"
         assert "We have logged in as TestBot" in caplog.records[0].message
         assert caplog.records[1].levelname == "WARNING"
@@ -1159,9 +1174,12 @@ class TestDiscordBot:
             in caplog.records[1].message
         )
         assert caplog.records[2].levelname == "INFO"
-        assert "Registered commands:" in caplog.records[2].message
+        assert "Synced 0 commands:" in caplog.records[2].message
+        assert caplog.records[3].levelname == "INFO"
+        assert "Registered commands:" in caplog.records[3].message
         mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
+        mock_sync_commands.assert_called_once()
 
     @async_test
     async def test_on_ready_no_match(

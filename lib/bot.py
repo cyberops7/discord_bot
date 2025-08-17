@@ -3,6 +3,7 @@
 import asyncio
 import importlib
 import logging
+import time
 from dataclasses import field
 from datetime import datetime, tzinfo  # noqa: F401 RUF100 - used in cast() as string
 from pathlib import Path
@@ -27,6 +28,7 @@ class DiscordBot(commands.Bot):
         **options: Any,
     ) -> None:
         super().__init__(command_prefix=command_prefix, intents=intents, **options)
+        self.startup_time: float = time.time()
 
     async def _load_cogs(self) -> None:
         """Dynamically load all cogs from the lib/cogs directory"""
@@ -111,8 +113,18 @@ class DiscordBot(commands.Bot):
                 "Could not find log channel with ID %s", config.CHANNELS.BOT_LOGS
             )
 
+        # TODO @cyberops7: add exception catching
         # Dynamically load all cogs
         await self._load_cogs()
+
+        # TODO @cyberops7: add exception catching
+        # Sync commands
+        synced_commands = await self.tree.sync()
+        logger.info(
+            "Synced %d commands: %s",
+            len(synced_commands),
+            ",".join(command.name for command in synced_commands),
+        )
 
         msg = ",".join([cmd.name for cmd in self.commands])
         logger.info("Registered commands: %s", msg)
