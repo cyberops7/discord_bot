@@ -1,0 +1,38 @@
+---
+# https://argo-cd.readthedocs.io/en/stable/user-guide/application-specification/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: discordbot
+  namespace: discordbot
+spec:
+  project: default
+  source:
+    repoURL: https://ghcr.io/cyberops7/discord_bot.git
+    targetRevision: main
+    path: kubernetes
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: discordbot
+  revisionHistoryLimit: 5
+  syncPolicy:
+    automated:
+      allowEmpty: true
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+operation:
+  initiatedBy:
+    username: admin
+  sync:
+    syncStrategy:
+      hook: {}
