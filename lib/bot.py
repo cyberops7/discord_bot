@@ -28,10 +28,13 @@ class DiscordBot(commands.Bot):
         **options: Any,
     ) -> None:
         super().__init__(command_prefix=command_prefix, intents=intents, **options)
+        self._initial_startup_complete: bool = False
         self.startup_time: float = time.time()
 
     async def _load_cogs(self) -> None:
         """Dynamically load all cogs from the lib/cogs directory"""
+        logger.info("Loading cogs...")
+        logger.info("Bot cogs: %s", self.cogs)
         cogs_dir = Path("lib/cogs")
 
         if not cogs_dir.exists():
@@ -63,12 +66,20 @@ class DiscordBot(commands.Bot):
                         and issubclass(attr, commands.Cog)
                         and attr != commands.Cog
                     ):
+                        # Check if cog is already loaded (for reconnections)
+                        if attr_name in self.cogs:
+                            logger.info("Cog %s already loaded, skipping", attr_name)
+                            loaded_cogs.append(f"{attr_name} (already loaded)")
+                            # Found the cog class, it is already loaded,
+                            # move to the next file
+                            break
+
                         # Instantiate and add the cog
                         cog_instance = attr(self)
                         await self.add_cog(cog_instance)
                         loaded_cogs.append(attr_name)
                         logger.info("Loaded cog: %s from %s", attr_name, module_name)
-                        break
+                        break  # Successfully loaded, move to the next file
                 else:
                     logger.warning("No valid Cog class found in %s", module_name)
                     failed_cogs.append(cog_file.stem)
@@ -98,12 +109,27 @@ class DiscordBot(commands.Bot):
                 "Failed to load %d cogs: %s", len(failed_cogs), ", ".join(failed_cogs)
             )
 
+        logger.info("Bot cogs: %s", self.cogs)
+
     async def on_ready(self) -> None:
         """Called when the bot is ready"""
+        logger.info("Bot is ready.")
         if bot_user := self.user:
             logger.info("We have logged in as %s", bot_user.display_name)
         else:
             logger.error("The bot user is not set")
+
+        # Only do full initialization on the first startup, not on reconnections
+        if self._initial_startup_complete:
+            logger.info("Bot reconnected, skipping cog reload and command sync")
+            await self.log_bot_event(
+                level="INFO",
+                event="Bot Reconnected",
+                details="Session restored, cogs and commands preserved",
+            )
+            return
+
+        logger.info("Performing initial startup procedures...")
 
         # Store the default log channel object in the config
         config.LOG_CHANNEL = await self._get_log_channel()
@@ -119,6 +145,7 @@ class DiscordBot(commands.Bot):
 
         # TODO @cyberops7: add exception catching
         # Sync commands
+        logger.info("Syncing commands...")
         synced_commands = await self.tree.sync()
         logger.info(
             "Synced %d commands: %s",
@@ -133,6 +160,31 @@ class DiscordBot(commands.Bot):
             level="INFO",
             event="Bot Startup",
             details=f"Version {config.VERSION}{' - DRY_RUN' if config.DRY_RUN else ''}",
+        )
+        self._initial_startup_complete = True
+
+    async def on_connect(self) -> None:
+        logger.info("Bot connected to Discord.")
+        await self.log_bot_event(
+            level="DEBUG",
+            event="Bot Reconnect",
+            details=f"Version {config.VERSION}",
+        )
+
+    async def on_disconnect(self) -> None:
+        logger.warning("Bot disconnected from Discord.")
+        await self.log_bot_event(
+            level="DEBUG",
+            event="Bot Disconnect",
+            details=f"Version {config.VERSION}",
+        )
+
+    async def on_resumed(self) -> None:
+        logger.info("Bot resumed connection to Discord.")
+        await self.log_bot_event(
+            level="DEBUG",
+            event="Bot Reconnect",
+            details=f"Version {config.VERSION}",
         )
 
     async def close(self) -> None:

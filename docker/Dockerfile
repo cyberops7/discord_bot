@@ -19,7 +19,8 @@ RUN apk -U upgrade --no-cache && \
     apk add --no-cache \
         bash \
         curl \
-        jq
+        jq \
+        vim
 
 # Install `uv`
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

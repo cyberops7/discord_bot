@@ -22,13 +22,23 @@ class Tasks(commands.Cog):
 
         # Bootstrap task: Clean Channel Members
         if config.DRY_RUN:
-            self.clean_channel_members_task_dry_run.start()
-        else:
+            if not self.clean_channel_members_task_dry_run.is_running():
+                self.clean_channel_members_task_dry_run.start()
+            else:
+                logger.warning(
+                    "clean_channel_members_task_dry_run task is already running"
+                )
+        elif not self.clean_channel_members_task.is_running():
             self.clean_channel_members_task.start()
+        else:
+            logger.warning("clean_channel_members_task task is already running")
 
         # Bootstrap task: YouTube Video Monitor
-        self.youtube_feeds: dict[str, youtube.YoutubeFeedParser] = {}
-        self.monitor_youtube_videos.start()
+        if not self.monitor_youtube_videos.is_running():
+            self.youtube_feeds: dict[str, youtube.YoutubeFeedParser] = {}
+            self.monitor_youtube_videos.start()
+        else:
+            logger.warning("monitor_youtube_videos task is already running")
 
     async def cog_unload(self) -> None:
         # Close task: Clean Channel Members

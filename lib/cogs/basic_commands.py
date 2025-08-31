@@ -49,7 +49,11 @@ class BasicCommands(commands.Cog):
     )
     async def slash_hello(self, interaction: discord.Interaction) -> None:
         """Responds with 'Hello world.'"""
-        logger.info("Received slash 'hello' from %s", interaction.user)
+        logger.info(
+            "Received slash 'hello' from %s in channel %s",
+            interaction.user,
+            interaction.channel,
+        )
         await interaction.response.send_message("Hello world.")  # type: ignore[attr-defined]
 
     @discord.app_commands.command(  # pyre-ignore[56]
@@ -65,7 +69,11 @@ class BasicCommands(commands.Cog):
         - API response time: the time to send and receive a response from Discord's API.
         - Uptime: the time since the bot started running.
         """
-        logger.info("Received slash 'ping' from %s", interaction.user)
+        logger.info(
+            "Received slash 'ping' from %s in channel %s",
+            interaction.user,
+            interaction.channel,
+        )
 
         # Create the embed with ping information
         embed = discord.Embed(
