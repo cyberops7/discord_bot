@@ -2,6 +2,10 @@
 version: 1
 disable_existing_loggers: false
 
+filters:
+  healthcheck:
+    (): lib.logger_extras.HealthCheckFilter
+
 formatters:
   colored:
     (): colorlog.ColoredFormatter
@@ -56,6 +60,8 @@ handlers:
 
   console_api:
     class: logging.StreamHandler
+    filters:
+      - healthcheck
     formatter: api
     level: "@env LOG_LEVEL_STDOUT,INFO"
     stream: ext://sys.stdout
@@ -75,6 +81,8 @@ handlers:
     backupCount: 5
     encoding: "utf-8"
     filename: "@format {@env LOG_DIR,log}/api.log"
+    filters:
+      - healthcheck
     formatter: standard
     level: "@env LOG_LEVEL_FILE,INFO"
     maxBytes: "@math 1024 * 1024 * 10"  # 10MB
