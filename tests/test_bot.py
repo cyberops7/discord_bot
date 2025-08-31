@@ -1099,13 +1099,19 @@ class TestDiscordBot:
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 3
+        assert len(caplog.records) == 6
         assert caplog.records[0].levelname == "INFO"
-        assert "We have logged in as TestBot" in caplog.records[0].message
+        assert "Bot is ready" in caplog.records[0].message
         assert caplog.records[1].levelname == "INFO"
-        assert "Synced 0 commands:" in caplog.records[1].message
+        assert "We have logged in as TestBot" in caplog.records[1].message
         assert caplog.records[2].levelname == "INFO"
-        assert "Registered commands:" in caplog.records[2].message
+        assert "Performing initial startup procedures..." in caplog.records[2].message
+        assert caplog.records[3].levelname == "INFO"
+        assert "Syncing commands..." in caplog.records[3].message
+        assert caplog.records[4].levelname == "INFO"
+        assert "Synced 0 commands:" in caplog.records[4].message
+        assert caplog.records[5].levelname == "INFO"
+        assert "Registered commands:" in caplog.records[5].message
         mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
         mock_sync_commands.assert_called_once()
@@ -1123,27 +1129,21 @@ class TestDiscordBot:
         mocker.patch.object(
             discord_bot, "_get_log_channel", return_value=mock_config.LOG_CHANNEL
         )
-        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
-        mock_sync_commands = mocker.patch.object(
-            discord_bot.tree, "sync", return_value=[]
-        )
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
         # Verify that the error message is logged when self.user is None
         assert len(caplog.records) == 3
-        assert caplog.records[0].levelname == "ERROR"
-        assert "The bot user is not set" in caplog.records[0].message
-        assert caplog.records[1].levelname == "INFO"
-        assert "Synced 0 commands:" in caplog.records[1].message
+        assert caplog.records[0].levelname == "INFO"
+        assert "Bot is ready" in caplog.records[0].message
+        assert caplog.records[1].levelname == "ERROR"
+        assert "The bot user is not set" in caplog.records[1].message
         assert caplog.records[2].levelname == "INFO"
-        assert "Registered commands:" in caplog.records[2].message
+        assert "Closing bot..." in caplog.records[2].message
 
-        mock_load_cogs.assert_called_once()
-        mock_log_bot_event.assert_called_once()
-        mock_sync_commands.assert_called_once()
+        assert mock_log_bot_event.call_count == 2
 
     @async_test
     async def test_on_ready_no_default_channel(
@@ -1165,18 +1165,13 @@ class TestDiscordBot:
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 4
-        assert caplog.records[0].levelname == "INFO"
-        assert "We have logged in as TestBot" in caplog.records[0].message
-        assert caplog.records[1].levelname == "WARNING"
+        assert len(caplog.records) == 7
+        assert caplog.records[3].levelname == "WARNING"
         assert (
             f"Could not find log channel with ID {mock_config.CHANNELS.BOT_LOGS}"
-            in caplog.records[1].message
+            in caplog.records[3].message
         )
-        assert caplog.records[2].levelname == "INFO"
-        assert "Synced 0 commands:" in caplog.records[2].message
-        assert caplog.records[3].levelname == "INFO"
-        assert "Registered commands:" in caplog.records[3].message
+
         mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
         mock_sync_commands.assert_called_once()
@@ -1715,3 +1710,196 @@ class TestDiscordBot:
             "Successfully loaded" in record.message for record in caplog.records
         )
         assert not any("Failed to load" in record.message for record in caplog.records)
+
+    @async_test
+    async def test_load_cogs_already_loaded(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """Test _load_cogs when a cog is already loaded (covers lines 71-75)."""
+        # Mock Path and its methods
+        mock_path = mocker.patch("lib.bot.Path")
+        mock_cogs_dir = mock_path.return_value
+        mock_cogs_dir.exists.return_value = True
+
+        mock_file = MagicMock()
+        mock_file.name = "existing_cog.py"
+        mock_file.stem = "existing_cog"
+        mock_cogs_dir.glob.return_value = [mock_file]
+
+        # Mock importlib.import_module
+        original_import: Callable[[str], ModuleType] = importlib.import_module
+
+        def import_side_effect(name: str) -> ModuleType:
+            if name.startswith("lib.cogs."):
+                return MagicMock()
+            return original_import(name)
+
+        mocker.patch("lib.bot.importlib.import_module", side_effect=import_side_effect)
+
+        # Create a mock Cog class
+        mock_cog_class = MagicMock()
+        mock_cog_class.__name__ = "ExistingCog"
+        mock_cog_class.__bases__ = (commands.Cog,)
+
+        # Mock dir() to return the cog class name
+        mocker.patch("lib.bot.dir", return_value=["ExistingCog"])
+        # Mock getattr to return our mock cog class
+        mocker.patch("lib.bot.getattr", return_value=mock_cog_class)
+        # Mock isinstance and issubclass
+        mocker.patch("lib.bot.isinstance", return_value=True)
+        mocker.patch("lib.bot.issubclass", return_value=True)
+
+        # Mock the bot's cogs property to simulate a cog already being loaded
+        mock_cogs = {"ExistingCog": MagicMock()}
+        mocker.patch.object(
+            type(discord_bot),
+            "cogs",
+            new_callable=mocker.PropertyMock,
+            return_value=mock_cogs,
+        )
+
+        # Mock add_cog method for the _load_cogs call
+        # (should not be called since cog is already loaded)
+        mock_add_cog = mocker.patch.object(discord_bot, "add_cog", AsyncMock())
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot._load_cogs()
+
+        # Verify add_cog was NOT called since cog was already loaded
+        mock_add_cog.assert_not_called()
+
+        # Verify the "already loaded" log message (line 71)
+        assert any(
+            "Cog ExistingCog already loaded, skipping" in record.message
+            for record in caplog.records
+        )
+
+        # Verify the success log includes "(already loaded)" text (line 72 effect)
+        assert any(
+            "Successfully loaded 1 cogs: ExistingCog (already loaded)" in record.message
+            for record in caplog.records
+        )
+
+    @async_test
+    async def test_on_ready_already_started(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """Test on_ready method when bot has already completed initial startup"""
+        # Set the bot as already started
+        discord_bot._initial_startup_complete = True
+
+        mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
+        mock_get_log_channel = mocker.patch.object(discord_bot, "_get_log_channel")
+        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
+        mock_sync_commands = mocker.patch.object(discord_bot.tree, "sync")
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.on_ready()
+
+        # Should log reconnection message and skip initialization
+        assert len(caplog.records) == 3
+        assert caplog.records[0].levelname == "INFO"
+        assert "Bot is ready" in caplog.records[0].message
+        assert caplog.records[1].levelname == "INFO"
+        assert "We have logged in as TestBot" in caplog.records[1].message
+        assert caplog.records[2].levelname == "INFO"
+        assert (
+            "Bot reconnected, skipping cog reload and command sync"
+            in caplog.records[2].message
+        )
+
+        # Should call log_bot_event with reconnection details
+        mock_log_bot_event.assert_called_once_with(
+            level="INFO",
+            event="Bot Reconnected",
+            details="Session restored, cogs and commands preserved",
+        )
+
+        # Should NOT call initialization methods
+        mock_get_log_channel.assert_not_called()
+        mock_load_cogs.assert_not_called()
+        mock_sync_commands.assert_not_called()
+
+    @async_test
+    async def test_on_connect(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test on_connect method logs connection and calls log_bot_event"""
+        mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.on_connect()
+
+        # Should log connection message
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "INFO"
+        assert "Bot connected to Discord." in caplog.records[0].message
+
+        # Should call log_bot_event with correct parameters
+        mock_log_bot_event.assert_called_once_with(
+            level="DEBUG",
+            event="Bot Reconnect",
+            details=f"Version {mock_config.VERSION}",
+        )
+
+    @async_test
+    async def test_on_disconnect(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test on_disconnect method logs disconnection and calls log_bot_event"""
+        mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
+
+        with caplog.at_level(logging.WARNING):
+            await discord_bot.on_disconnect()
+
+        # Should log disconnection message
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "WARNING"
+        assert "Bot disconnected from Discord." in caplog.records[0].message
+
+        # Should call log_bot_event with correct parameters
+        mock_log_bot_event.assert_called_once_with(
+            level="DEBUG",
+            event="Bot Disconnect",
+            details=f"Version {mock_config.VERSION}",
+        )
+
+    @async_test
+    async def test_on_resumed(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test on_resumed method logs resumption and calls log_bot_event"""
+        mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.on_resumed()
+
+        # Should log resumption message
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "INFO"
+        assert "Bot resumed connection to Discord." in caplog.records[0].message
+
+        # Should call log_bot_event with correct parameters
+        mock_log_bot_event.assert_called_once_with(
+            level="DEBUG",
+            event="Bot Reconnect",
+            details=f"Version {mock_config.VERSION}",
+        )

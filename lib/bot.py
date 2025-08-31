@@ -113,11 +113,20 @@ class DiscordBot(commands.Bot):
 
     async def on_ready(self) -> None:
         """Called when the bot is ready"""
-        logger.info("Bot is ready.")
+        logger.info("Bot is ready")
         if bot_user := self.user:
             logger.info("We have logged in as %s", bot_user.display_name)
         else:
             logger.error("The bot user is not set")
+            await self.log_bot_event(
+                level="CRITICAL",
+                event="Bot Authentication Failure",
+                details="Bot user is None - shutting down",
+            )
+            # Exit the application as the bot cannot function without
+            # proper authentication
+            await self.close()
+            return
 
         # Only do full initialization on the first startup, not on reconnections
         if self._initial_startup_complete:
@@ -188,6 +197,7 @@ class DiscordBot(commands.Bot):
         )
 
     async def close(self) -> None:
+        logger.info("Closing bot...")
         await asyncio.wait_for(
             self.log_bot_event(
                 event="Bot Shutdown",
