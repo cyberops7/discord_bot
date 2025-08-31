@@ -2,11 +2,9 @@
   "ignore_all_errors": [
     ".venv"
   ],
-  "site_package_search_strategy": "pep561",
+  "site_package_search_strategy": "all",
   "source_directories": [
-    ".",
-    ".venv",
-    ".venv/lib/python3.13"
+    "."
   ],
   "strict": true
 }

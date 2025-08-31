@@ -4,6 +4,7 @@ import datetime
 import logging
 import os
 import tomllib
+from collections.abc import ItemsView, KeysView, ValuesView
 from datetime import tzinfo
 from pathlib import Path
 from typing import Any, Optional
@@ -61,9 +62,21 @@ class ConfigDict:
         """Get configuration value with optional default"""
         return self._data.get(key, default)
 
+    def items(self) -> ItemsView[str, Any]:
+        """Return items from the underlying dictionary"""
+        return self._data.items()
+
+    def keys(self) -> KeysView[str]:
+        """Return keys from the underlying dictionary"""
+        return self._data.keys()
+
     def to_dict(self) -> dict[str, Any]:
         """Return the underlying dictionary"""
         return self._data.copy()
+
+    def values(self) -> ValuesView[Any]:
+        """Return values from the underlying dictionary"""
+        return self._data.values()
 
 
 class Config:

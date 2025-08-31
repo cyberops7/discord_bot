@@ -1,6 +1,6 @@
 [project]
 name = "discord_bot"
-version = "0.5.0"
+version = "0.6.0"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -10,6 +10,7 @@ dependencies = [
     "discord>=2.3.2",
     "dotenv>=0.9.9",
     "fastapi>=0.116.1",
+    "feedparser>=6.0.11",
     "pyyaml>=6.0.2",
     "uvicorn>=0.34.0",
 ]
@@ -20,7 +21,7 @@ dev = [
     "invoke>=2.2.0",
     "pre-commit>=4.3.0",
     "pyre-check>=0.9.23",
-    "ruff>=0.12.9",
+    "ruff>=0.12.11",
     "shellcheck-py>=0.11.0.1",
     "yamllint>=1.35.1",
 ]
