@@ -14,7 +14,7 @@ on:  # yamllint disable-line rule:truthy
         type: string
 
 env:
-  UV_VERSION: "0.7.18"  # Global variable for UV version
+  UV_VERSION: "0.8.23"  # Global variable for UV version
 
 jobs:
   # Run code quality checks
@@ -25,11 +25,11 @@ jobs:
     steps:
       # Check out the code repository
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Install uv
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           # Install a specific version of uv.
           version: ${{ env.UV_VERSION }}
@@ -40,7 +40,7 @@ jobs:
 
       # Install trivy
       - name: Manual Trivy Setup
-        uses: aquasecurity/setup-trivy@v0.2.2
+        uses: aquasecurity/setup-trivy@v0.2.4
 
       # Run checks
       - name: Run the suite of checks
@@ -72,7 +72,7 @@ jobs:
 
       # Check out the pull request code
       - name: Checkout the PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.head_ref }}
 
@@ -131,7 +131,7 @@ jobs:
     steps:
       # Check out the code repository
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Set up any necessary environment variables
       - name: Set Env Vars
@@ -143,7 +143,7 @@ jobs:
 
       # Install uv
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           # Install a specific version of uv.
           version: ${{ env.UV_VERSION }}
@@ -187,7 +187,7 @@ jobs:
     steps:
       # Check out the code repository
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Set up any necessary environment variables
       - name: Set Env Vars
@@ -199,7 +199,7 @@ jobs:
 
       # Install uv
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           # Install a specific version of uv.
           version: ${{ env.UV_VERSION }}
@@ -226,7 +226,7 @@ jobs:
 
       # Install trivy
       - name: Manual Trivy Setup
-        uses: aquasecurity/setup-trivy@v0.2.2
+        uses: aquasecurity/setup-trivy@v0.2.4
 
       # Run vuln scans on the Docker image
       - name: Scan Docker image

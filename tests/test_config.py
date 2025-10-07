@@ -334,7 +334,7 @@ class TestConfig:
         )
         mocker.patch("pathlib.Path", return_value=mock_path_instance)
 
-        with pytest.raises(FileNotFoundError, match="pyproject.toml not found"):
+        with pytest.raises(FileNotFoundError, match=r"pyproject.toml not found"):
             Config._load_version_from_pyproject()
 
         mock_path_open.assert_called_once()
@@ -348,7 +348,7 @@ class TestConfig:
         with (
             patch("builtins.open", mocker.mock_open(read_data=b"mock_toml_content")),
             patch("lib.config.tomllib.load", return_value=mock_toml_data),
-            pytest.raises(ValueError, match="Version not found in pyproject.toml"),
+            pytest.raises(ValueError, match=r"Version not found in pyproject.toml"),
         ):
             Config._load_version_from_pyproject()
 
@@ -361,7 +361,7 @@ class TestConfig:
         with (
             patch("builtins.open", mocker.mock_open(read_data=b"mock_toml_content")),
             patch("lib.config.tomllib.load", return_value=mock_toml_data),
-            pytest.raises(ValueError, match="Version not found in pyproject.toml"),
+            pytest.raises(ValueError, match=r"Version not found in pyproject.toml"),
         ):
             Config._load_version_from_pyproject()
 
@@ -375,7 +375,7 @@ class TestConfig:
         with (
             patch("builtins.open", mocker.mock_open(read_data=b"mock_toml_content")),
             patch("lib.config.tomllib.load", return_value=mock_toml_data),
-            pytest.raises(ValueError, match="Version not found in pyproject.toml"),
+            pytest.raises(ValueError, match=r"Version not found in pyproject.toml"),
         ):
             Config._load_version_from_pyproject()
 
