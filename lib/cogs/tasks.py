@@ -20,6 +20,7 @@ class Tasks(commands.Cog):
     def __init__(self, bot: "DiscordBot") -> None:
         self.bot = bot
 
+        # TODO @cyberops7: refactor the startup code into a separate function
         # Bootstrap task: Clean Channel Members
         if config.DRY_RUN:
             if not self.clean_channel_members_task_dry_run.is_running():

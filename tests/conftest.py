@@ -76,37 +76,57 @@ def mock_config(
         yield MagicMock()
         return
 
-    # Create the base mock config first
-    with patch("lib.config.config") as mock_cfg:
-        # Set up all the config attributes before applying patches that trigger imports
-        mock_cfg.BOT_TOKEN = "test_token"  # noqa: S105 hardcoded password
-        mock_cfg.CHANNELS.BOT_LOGS = 101
-        mock_cfg.CHANNELS.BOT_PLAYGROUND = 123
-        mock_cfg.CHANNELS.MOUSETRAP = 456
-        mock_cfg.CHANNELS.RULES = 789
-        mock_cfg.DRY_RUN = False
-        mock_cfg.LOG_CHANNEL = mock_channel(channel_id=mock_cfg.CHANNELS.BOT_LOGS)
-        mock_cfg.LOG_CHANNEL.send = AsyncMock()
-        mock_cfg.ROLES.ADMIN = 11111
-        mock_cfg.ROLES.JIMS_GARAGE = 22222
-        mock_cfg.ROLES.MOD = 33333
-        mock_cfg.ROLES.BOTS = 44444
-        mock_cfg.ROLES.GARAGE_MEMBER = 55555
-        mock_cfg.GUILDS.JIMS_GARAGE = 66666
-        mock_cfg.TIMEZONE = datetime.UTC
+    # Import Config class to access singleton
+    from lib.config import Config  # noqa: PLC0415 imports at the top of the file
 
-        # Now apply the remaining patches that might trigger module imports
-        with (
-            patch("lib.api.config", mock_cfg),
-            patch("lib.bot.config", mock_cfg),
-            patch("lib.bot_log_context.config", mock_cfg),
-            patch("lib.cogs.tasks.config", mock_cfg),
-            patch("tests.test_bot.config", mock_cfg),
-            patch("lib.config.load_dotenv") as mock_load_dotenv,
-        ):
-            # Mock load_dotenv to prevent actual environment variable loading
-            mock_load_dotenv.return_value = None
-            yield mock_cfg
+    # Create a mock config with all necessary attributes
+    mock_cfg = MagicMock()
+    mock_cfg.BOT_TOKEN = "test_token"  # noqa: S105 hardcoded password
+    mock_cfg.CHANNELS.BOT_LOGS = 101
+    mock_cfg.CHANNELS.BOT_PLAYGROUND = 123
+    mock_cfg.CHANNELS.ANNOUNCEMENTS = 987
+    mock_cfg.CHANNELS.MOUSETRAP = 456
+    mock_cfg.CHANNELS.RULES = 789
+    mock_cfg.DRY_RUN = False
+    mock_cfg.LOG_CHANNEL = mock_channel(channel_id=mock_cfg.CHANNELS.BOT_LOGS)
+    mock_cfg.LOG_CHANNEL.send = AsyncMock()
+    mock_cfg.ROLES.ADMIN = 11111
+    mock_cfg.ROLES.JIMS_GARAGE = 22222
+    mock_cfg.ROLES.MOD = 33333
+    mock_cfg.ROLES.BOTS = 44444
+    mock_cfg.ROLES.GARAGE_MEMBER = 55555
+    mock_cfg.GUILDS.JIMS_GARAGE = 66666
+    mock_cfg.TIMEZONE = datetime.UTC
+    mock_cfg.YOUTUBE_FEEDS = {
+        "JIMS_GARAGE": "https://www.youtube.com/feeds/videos.xml?channel_id=UCUUTdohVElFLSP4NBnlPEwA",
+        "TECH_BENCH": "https://www.youtube.com/feeds/videos.xml?channel_id=UCT5B7jBug46N7abnl_izt5w",
+    }
+
+    # Store original singleton state
+    original_instance = Config._instance
+    original_config_data = Config._config_data
+
+    # Replace the singleton instance with our mock
+    Config._instance = mock_cfg
+    Config._config_data = mock_cfg
+
+    # Patch all the imports to use our mock
+    with (
+        patch("lib.config.config", mock_cfg),
+        patch("lib.api.config", mock_cfg),
+        patch("lib.bot.config", mock_cfg),
+        patch("lib.bot_log_context.config", mock_cfg),
+        patch("lib.cogs.tasks.config", mock_cfg),
+        patch("tests.test_bot.config", mock_cfg),
+        patch("lib.config.load_dotenv") as mock_load_dotenv,
+    ):
+        # Mock load_dotenv to prevent actual environment variable loading
+        mock_load_dotenv.return_value = None
+        yield mock_cfg
+
+    # Restore original singleton state after test
+    Config._instance = original_instance
+    Config._config_data = original_config_data
 
 
 @pytest.fixture
