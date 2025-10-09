@@ -10,6 +10,8 @@ repos:
         pass_filenames: false
         entry: uv run invoke check
 
+  # TODO @cyberops7: don't have this silently fail
+  # We don't want it to block commits, but we do want to know if it fails
   - repo: local
     hooks:
       - id: run-tests

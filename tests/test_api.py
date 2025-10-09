@@ -132,7 +132,7 @@ async def test_lifespan_no_bot_token(
     mock_app = mocker.MagicMock(spec=FastAPI)
 
     # Expect a RuntimeError when no BOT_TOKEN is provided
-    with pytest.raises(RuntimeError, match="BOT_TOKEN is required to start the bot."):
+    with pytest.raises(RuntimeError, match=r"BOT_TOKEN is required to start the bot."):
         async with lifespan(mock_app):  # pyre-ignore[16] - Provided dynamically
             pass
 

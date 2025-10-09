@@ -36,6 +36,17 @@ LOG_RECORD_BUILTIN_ATTRS = {
 }
 
 
+class HealthCheckFilter(logging.Filter):
+    """Filter to suppress successful /healthcheck logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Suppress logs for GET /healthcheck with a 200 status
+        return not (
+            hasattr(record, "getMessage")
+            and "GET /healthcheck HTTP/1.1 200 OK" in record.getMessage()
+        )
+
+
 class CustomLogRecord(logging.LogRecord):
     """
     Custom LogRecord to add support for new attributes like client_addr.

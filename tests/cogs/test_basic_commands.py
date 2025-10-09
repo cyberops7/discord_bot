@@ -33,10 +33,11 @@ def mock_context(mock_channel: MagicMock, mock_user: MagicMock) -> MagicMock:
 
 
 @pytest.fixture
-def mock_interaction(mock_user: MagicMock) -> MagicMock:
+def mock_interaction(mock_channel: MagicMock, mock_user: MagicMock) -> MagicMock:
     """Mock discord.Interaction fixture"""
     interaction = MagicMock(spec=discord.Interaction)
     interaction.user = mock_user
+    interaction.channel = mock_channel
     interaction.response = MagicMock()
     interaction.response.send_message = AsyncMock()
     interaction.edit_original_response = AsyncMock()
@@ -100,7 +101,10 @@ class TestBasicCommands:
         assert len(caplog.records) == 1
         record = caplog.records[0]
         assert record.levelname == "INFO"
-        assert record.message == "Received slash 'hello' from TestUser"
+        assert (
+            record.message == f"Received slash 'hello' from TestUser in channel "
+            f"{mock_interaction.channel}"
+        )
         assert record.name == "lib.cogs.basic_commands"
 
     @pytest.mark.parametrize(
@@ -204,7 +208,10 @@ class TestBasicCommands:
         assert len(caplog.records) == 1
         record = caplog.records[0]
         assert record.levelname == "INFO"
-        assert record.message == "Received slash 'ping' from TestUser"
+        assert (
+            record.message == f"Received slash 'ping' from TestUser in channel "
+            f"{mock_interaction.channel}"
+        )
         assert record.name == "lib.cogs.basic_commands"
 
     @async_test
@@ -241,7 +248,10 @@ class TestBasicCommands:
         assert len(caplog.records) == 1
         record = caplog.records[0]
         assert record.levelname == "INFO"
-        assert record.message == "Received slash 'ping' from TestUser"
+        assert (
+            record.message == f"Received slash 'ping' from TestUser in channel "
+            f"{mock_interaction.channel}"
+        )
 
     @async_test
     async def test_slash_ping_command_edit_failure(

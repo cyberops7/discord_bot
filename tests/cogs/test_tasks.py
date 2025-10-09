@@ -24,8 +24,15 @@ def tasks_cog(discord_bot: DiscordBot) -> Tasks:
         # Mock the loop control methods for testing
         cog.clean_channel_members_task.start = MagicMock()
         cog.clean_channel_members_task.cancel = MagicMock()
+        cog.clean_channel_members_task.is_running = MagicMock(return_value=False)
         cog.clean_channel_members_task_dry_run.start = MagicMock()
         cog.clean_channel_members_task_dry_run.cancel = MagicMock()
+        cog.clean_channel_members_task_dry_run.is_running = MagicMock(
+            return_value=False
+        )
+        cog.monitor_youtube_videos.start = MagicMock()
+        cog.monitor_youtube_videos.cancel = MagicMock()
+        cog.monitor_youtube_videos.is_running = MagicMock(return_value=False)
         return cog
 
 
@@ -144,6 +151,37 @@ def create_test_member(
 class TestTasks:
     """Test cases for the Tasks cog."""
 
+    def test_clean_members_task_already_running_normal(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_config: MagicMock,
+    ) -> None:
+        """
+        Test initialization when the clean_channel_members_task
+        is already running (line 34)
+        """
+        mock_config.DRY_RUN = False
+
+        with patch("discord.ext.tasks.Loop.start"), caplog.at_level(logging.WARNING):
+            # Create a Tasks instance first
+            cog = Tasks(discord_bot)
+
+            # Mock the task as running and re-initialize to trigger the warning
+            with patch.object(cog, "clean_channel_members_task") as mock_task:
+                mock_task.is_running.return_value = True
+
+                # Call __init__ again to trigger the already running logic
+                Tasks.__init__(cog, discord_bot)
+
+            # Verify the warning was logged
+            warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+            assert len(warning_records) >= 1
+            assert any(
+                "clean_channel_members_task task is already running" in record.message
+                for record in warning_records
+            )
+
     @pytest.mark.parametrize("dry_run", [True, False])
     def test_cog_initialization(
         self, discord_bot: DiscordBot, mock_config: MagicMock, dry_run: bool
@@ -155,7 +193,7 @@ class TestTasks:
             cog = Tasks(discord_bot)
             assert cog is not None
             assert isinstance(cog, Tasks)
-            assert mock_start.call_count == 1
+            assert mock_start.call_count == 2
 
     @pytest.mark.parametrize("dry_run", [True, False])
     @async_test
@@ -550,3 +588,321 @@ class TestTasks:
 
             # Verify the module is properly loaded
             assert hasattr(tasks_module, "Tasks")
+
+    def test_clean_members_task_already_running_dry_run(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_config: MagicMock,
+    ) -> None:
+        """
+        Test initialization when clean_channel_members_task_dry_run
+        is already running (line 28)
+        """
+        mock_config.DRY_RUN = True
+
+        with patch("discord.ext.tasks.Loop.start"), caplog.at_level(logging.WARNING):
+            # Create a Tasks instance first
+            cog = Tasks(discord_bot)
+
+            # Mock the task as running and re-initialize to trigger the warning
+            with patch.object(cog, "clean_channel_members_task_dry_run") as mock_task:
+                mock_task.is_running.return_value = True
+
+                # Call __init__ again to trigger the already running logic
+                Tasks.__init__(cog, discord_bot)
+
+            # Verify the warning was logged
+            warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+            assert len(warning_records) >= 1
+            assert any(
+                "clean_channel_members_task_dry_run task is already running"
+                in record.message
+                for record in warning_records
+            )
+
+    def test_monitor_youtube_videos_task_already_running(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mock_config: MagicMock,
+    ) -> None:
+        """
+        Test initialization when `monitor_youtube_videos task` is already running
+        """
+        mock_config.DRY_RUN = False
+
+        with patch("discord.ext.tasks.Loop.start"), caplog.at_level(logging.WARNING):
+            # Create a Tasks instance first
+            cog = Tasks(discord_bot)
+
+            # Mock the task as running and re-initialize to trigger the warning
+            with patch.object(cog, "monitor_youtube_videos") as mock_task:
+                mock_task.is_running.return_value = True
+
+                # Call __init__ again to trigger the already running logic
+                Tasks.__init__(cog, discord_bot)
+
+            # Verify the warning was logged
+            warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+            assert len(warning_records) >= 1
+            assert any(
+                "monitor_youtube_videos task is already running" in record.message
+                for record in warning_records
+            )
+
+    @async_test
+    async def test_monitor_youtube_videos_with_new_videos(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test the monitor_youtube_videos method when new videos are found"""
+        # Mock feed parser with new videos
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.parse_rss_feed.return_value = ["video1", "video2"]
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        # Mock channel
+        mock_channel = MagicMock(spec=discord.TextChannel)
+        tasks_cog.bot.get_channel = MagicMock(return_value=mock_channel)
+
+        # Mock bot event logging
+        mock_log_bot_event = mocker.patch.object(
+            tasks_cog.bot, "log_bot_event", new=AsyncMock()
+        )
+
+        with caplog.at_level(logging.INFO):
+            await tasks_cog.monitor_youtube_videos()
+
+        # Verify logging
+        info_records = [r for r in caplog.records if r.levelname == "INFO"]
+        assert any(
+            "Checking test_feed for new videos" in record.message
+            for record in info_records
+        )
+        assert any(
+            "New videos found: ['video1', 'video2']" in record.message
+            for record in info_records
+        )
+
+        # Verify bot event was logged
+        mock_log_bot_event.assert_called_with(
+            event="Task - YouTube Video Monitor",
+            details="New videos found for test_feed: ['video1', 'video2']",
+        )
+
+        # Verify channel send was called
+        mock_channel.send.assert_called_once()
+
+    @async_test
+    async def test_monitor_youtube_videos_with_new_videos_announcements_channel(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """
+        Test monitor_youtube_videos method uses the ANNOUNCEMENTS channel
+        when DRY_RUN=False (line 192)
+        """
+        mock_config.DRY_RUN = False
+
+        # Mock feed parser with new videos
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.parse_rss_feed.return_value = ["video1"]
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        # Mock channel
+        mock_channel = MagicMock(spec=discord.TextChannel)
+        mock_get_channel = MagicMock(return_value=mock_channel)
+        tasks_cog.bot.get_channel = mock_get_channel
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.INFO):
+            await tasks_cog.monitor_youtube_videos()
+
+        # Verify the ANNOUNCEMENTS channel was requested (line 192)
+        mock_get_channel.assert_called_with(987)
+
+        # Verify channel send was called
+        mock_channel.send.assert_called_once()
+
+    @async_test
+    async def test_monitor_youtube_videos_no_new_videos(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test the monitor_youtube_videos method when no new videos are found"""
+        # Mock feed parser with no new videos
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.parse_rss_feed.return_value = []
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        tasks_cog.bot.get_channel = MagicMock()
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.INFO):
+            await tasks_cog.monitor_youtube_videos()
+
+        # Verify logging
+        info_records = [r for r in caplog.records if r.levelname == "INFO"]
+        assert any(
+            "Checking test_feed for new videos" in record.message
+            for record in info_records
+        )
+        assert any("No new videos found" in record.message for record in info_records)
+
+        # Verify `channel` was not accessed due to there being no new videos
+        tasks_cog.bot.get_channel.assert_not_called()
+
+    # @pytest.mark.no_mock_config
+    @async_test
+    async def test_monitor_youtube_videos_channel_selection(
+        self,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test monitor_youtube_videos method channel selection based on DRY_RUN"""
+        # Mock feed parser with new videos
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.parse_rss_feed.return_value = ["video1"]
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        # Mock channel
+        mock_channel = MagicMock(spec=discord.TextChannel)
+        mock_get_channel = MagicMock(return_value=mock_channel)
+        tasks_cog.bot.get_channel = mock_get_channel
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        # Test DRY_RUN = True
+        with (
+            patch("lib.cogs.tasks.config.DRY_RUN", new=True),
+            patch("lib.cogs.tasks.config.CHANNELS") as mock_channels,
+        ):
+            mock_channels.BOT_PLAYGROUND = 123
+            await tasks_cog.monitor_youtube_videos()
+            mock_get_channel.assert_called_with(123)
+
+        # Reset mock
+        mock_get_channel.reset_mock()
+
+        # Test DRY_RUN = False
+        with (
+            patch("lib.cogs.tasks.config.DRY_RUN", new=False),
+            patch("lib.cogs.tasks.config.CHANNELS") as mock_channels,
+        ):
+            mock_channels.ANNOUNCEMENTS = 987
+            await tasks_cog.monitor_youtube_videos()
+            mock_get_channel.assert_called_with(987)
+
+    @async_test
+    async def test_monitor_youtube_videos_channel_not_found(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test monitor_youtube_videos method when the channel is not found"""
+        mock_config.DRY_RUN = False
+
+        # Mock feed parser with new videos
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.parse_rss_feed.return_value = ["video1"]
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        # Mock channel as None (not found)
+        tasks_cog.bot.get_channel = MagicMock(return_value=None)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_youtube_videos()
+
+        # Verify warning was logged
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warning_records) == 1
+        assert "Could not find channel with ID" in warning_records[0].message
+        assert "or it is not a TextChannel" in warning_records[0].message
+
+    @async_test
+    async def test_monitor_youtube_videos_channel_wrong_type(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test monitor_youtube_videos method when the channel is not TextChannel"""
+        mock_config.DRY_RUN = False
+
+        # Mock feed parser with new videos
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.parse_rss_feed.return_value = ["video1"]
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        # Mock channel as a wrong type (VoiceChannel)
+        mock_channel = MagicMock(spec=discord.VoiceChannel)
+        tasks_cog.bot.get_channel = MagicMock(return_value=mock_channel)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_youtube_videos()
+
+        # Verify warning was logged
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warning_records) == 1
+        assert "Could not find channel with ID" in warning_records[0].message
+        assert "or it is not a TextChannel" in warning_records[0].message
+
+    @async_test
+    async def test_before_monitor_youtube_videos(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test before_monitor_youtube_videos method"""
+        # Mock YouTube feed parser
+        with patch("lib.cogs.tasks.youtube.YoutubeFeedParser") as mock_parser_class:
+            mock_parser_instance = MagicMock()
+            mock_parser_class.return_value = mock_parser_instance
+            tasks_cog.bot.wait_until_ready = AsyncMock()
+
+            with caplog.at_level(logging.INFO):
+                await tasks_cog.before_monitor_youtube_videos()
+
+        # Verify logging
+        info_records = [r for r in caplog.records if r.levelname == "INFO"]
+        assert any(
+            "monitor_youtube_videos task is starting up..." in record.message
+            for record in info_records
+        )
+        assert any(
+            "Initialized YouTube feed parser for JIMS_GARAGE" in record.message
+            for record in info_records
+        )
+        assert any(
+            "Initialized YouTube feed parser for TECH_BENCH" in record.message
+            for record in info_records
+        )
+        assert any(
+            "Initialized 2 YouTube video monitors" in record.message
+            for record in info_records
+        )
+
+        # Verify YouTube feed parsers were created with correct feeds from mock config
+        assert mock_parser_class.call_count == 2
+        mock_parser_class.assert_any_call(
+            "jims_garage",
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UCUUTdohVElFLSP4NBnlPEwA",
+        )
+        mock_parser_class.assert_any_call(
+            "tech_bench",
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UCT5B7jBug46N7abnl_izt5w",
+        )
+
+        # Verify feeds were stored with correct names
+        assert "JIMS_GARAGE" in tasks_cog.youtube_feeds
+        assert "TECH_BENCH" in tasks_cog.youtube_feeds
+
+        # Verify bot wait_until_ready was called
+        tasks_cog.bot.wait_until_ready.assert_called_once()

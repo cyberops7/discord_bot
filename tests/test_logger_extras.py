@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import colorlog
 import pytest
@@ -14,9 +14,134 @@ from lib.logger_extras import (
     LOG_RECORD_BUILTIN_ATTRS,
     AccessLogFormatter,
     CustomLogRecord,
+    HealthCheckFilter,
     JSONFormatter,
     custom_log_record_factory,
 )
+
+
+class TestHealthCheckFilter:
+    """Test HealthCheckFilter class"""
+
+    @pytest.fixture
+    def health_filter(self) -> HealthCheckFilter:
+        """Create a HealthCheckFilter instance"""
+        return HealthCheckFilter()
+
+    def test_filter_allows_non_healthcheck_log(
+        self, health_filter: HealthCheckFilter
+    ) -> None:
+        """Test that filter allows non-healthcheck logs through"""
+        record = logging.LogRecord(
+            name="test_logger",
+            level=logging.INFO,
+            pathname="/test/path.py",
+            lineno=42,
+            msg="Regular log message",
+            args=(),
+            exc_info=None,
+        )
+
+        result = health_filter.filter(record)
+        assert result is True
+
+    def test_filter_suppresses_healthcheck_log(
+        self, health_filter: HealthCheckFilter
+    ) -> None:
+        """Test that filter suppresses successful healthcheck logs"""
+        record = logging.LogRecord(
+            name="test_logger",
+            level=logging.INFO,
+            pathname="/test/path.py",
+            lineno=42,
+            msg="GET /healthcheck HTTP/1.1 200 OK",
+            args=(),
+            exc_info=None,
+        )
+
+        result = health_filter.filter(record)
+        assert result is False
+
+    def test_filter_allows_healthcheck_with_different_status(
+        self, health_filter: HealthCheckFilter
+    ) -> None:
+        """Test that filter allows healthcheck logs with non-200 status"""
+        record = logging.LogRecord(
+            name="test_logger",
+            level=logging.INFO,
+            pathname="/test/path.py",
+            lineno=42,
+            msg="GET /healthcheck HTTP/1.1 404 Not Found",
+            args=(),
+            exc_info=None,
+        )
+
+        result = health_filter.filter(record)
+        assert result is True
+
+    def test_filter_allows_partial_healthcheck_message(
+        self, health_filter: HealthCheckFilter
+    ) -> None:
+        """Test that filter allows logs with partial healthcheck patterns"""
+        record = logging.LogRecord(
+            name="test_logger",
+            level=logging.INFO,
+            pathname="/test/path.py",
+            lineno=42,
+            msg="GET /healthcheck",
+            args=(),
+            exc_info=None,
+        )
+
+        result = health_filter.filter(record)
+        assert result is True
+
+    def test_filter_handles_record_without_getmessage(
+        self, health_filter: HealthCheckFilter
+    ) -> None:
+        """Test that filter handles records without a getMessage method"""
+
+        # Create a mock record that mimics LogRecord but without a getMessage method
+        mock_record = MagicMock(spec=logging.LogRecord)
+        # Remove the getMessage method to test the exception handling
+        del mock_record.getMessage
+
+        result = health_filter.filter(mock_record)
+        assert result is True
+
+    def test_filter_with_complex_healthcheck_log(
+        self, health_filter: HealthCheckFilter
+    ) -> None:
+        """Test filter with a complete `healthcheck log message"""
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="/path/to/uvicorn.py",
+            lineno=100,
+            msg='127.0.0.1:54321 - "GET /healthcheck HTTP/1.1 200 OK"',
+            args=(),
+            exc_info=None,
+        )
+
+        result = health_filter.filter(record)
+        assert result is False
+
+    def test_filter_with_healthcheck_substring_in_larger_message(
+        self, health_filter: HealthCheckFilter
+    ) -> None:
+        """Test filter when a healthcheck pattern is part of a larger message"""
+        record = logging.LogRecord(
+            name="test_logger",
+            level=logging.INFO,
+            pathname="/test/path.py",
+            lineno=42,
+            msg="Processing request: GET /healthcheck HTTP/1.1 200 OK - took 5ms",
+            args=(),
+            exc_info=None,
+        )
+
+        result = health_filter.filter(record)
+        assert result is False
 
 
 class TestCustomLogRecord:

@@ -1,6 +1,7 @@
 """Tests for configuration module"""
 
 import datetime
+from collections.abc import ItemsView, KeysView, ValuesView
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -140,6 +141,53 @@ class TestConfigDict:
 
         assert config_dict.get("nonexistent") is None
 
+    def test_items(self) -> None:
+        """Test items method returns ItemsView from the underlying dictionary"""
+        data = {"key1": "value1", "key2": 42, "key3": True}
+        config_dict = ConfigDict(data)
+
+        result = config_dict.items()
+
+        # Should return an ItemsView object
+        assert isinstance(result, ItemsView)
+
+        # Should contain all items from the underlying dictionary
+        items_list = list(result)
+        expected_items = list(data.items())
+        assert items_list == expected_items
+
+    def test_items_with_nested_data(self) -> None:
+        """Test items method with nested data returns raw dictionary data"""
+        data = {"simple": "value", "nested": {"inner": "inner_value"}, "number": 123}
+        config_dict = ConfigDict(data)
+
+        result = config_dict.items()
+        items_dict = dict(result)
+
+        # Simple values should be as expected
+        assert items_dict["simple"] == "value"
+        assert items_dict["number"] == 123
+
+        # Nested dict should be the raw dictionary data (not ConfigDict)
+        assert isinstance(items_dict["nested"], dict)
+        assert items_dict["nested"] == {"inner": "inner_value"}
+        assert items_dict["nested"]["inner"] == "inner_value"
+
+    def test_keys(self) -> None:
+        """Test keys method returns KeysView from the underlying dictionary"""
+        data = {"key1": "value1", "key2": 42, "key3": True}
+        config_dict = ConfigDict(data)
+
+        result = config_dict.keys()
+
+        # Should return a KeysView object
+        assert isinstance(result, KeysView)
+
+        # Should contain all keys from the underlying dictionary
+        keys_list = list(result)
+        expected_keys = list(data.keys())
+        assert keys_list == expected_keys
+
     def test_to_dict(self) -> None:
         """Test to_dict method returns a copy of data"""
         data = {"key1": "value1", "key2": 42}
@@ -148,6 +196,40 @@ class TestConfigDict:
         result = config_dict.to_dict()
         assert result == data
         assert result is not config_dict._data  # Should be a copy
+
+    def test_values(self) -> None:
+        """Test values method returns ValuesView from the underlying dictionary"""
+        data = {"key1": "value1", "key2": 42, "key3": True}
+        config_dict = ConfigDict(data)
+
+        result = config_dict.values()
+
+        # Should return ValuesView
+        assert isinstance(result, ValuesView)
+
+        # Should contain all values from the underlying dictionary
+        values_list = list(result)
+        expected_values = list(data.values())
+        assert values_list == expected_values
+
+    def test_keys_values_consistency(self) -> None:
+        """Test that keys and values methods are consistent with items"""
+        data = {"a": 1, "b": "two", "c": [3, 4]}
+        config_dict = ConfigDict(data)
+
+        keys_list = list(config_dict.keys())
+        values_list = list(config_dict.values())
+        items_list = list(config_dict.items())
+
+        # Keys and values should match items
+        assert keys_list == [item[0] for item in items_list]
+        assert values_list == [item[1] for item in items_list]
+
+        # Should contain expected data
+        assert set(keys_list) == {"a", "b", "c"}
+        assert 1 in values_list
+        assert "two" in values_list
+        assert [3, 4] in values_list
 
 
 class TestConfig:
@@ -252,7 +334,7 @@ class TestConfig:
         )
         mocker.patch("pathlib.Path", return_value=mock_path_instance)
 
-        with pytest.raises(FileNotFoundError, match="pyproject.toml not found"):
+        with pytest.raises(FileNotFoundError, match=r"pyproject.toml not found"):
             Config._load_version_from_pyproject()
 
         mock_path_open.assert_called_once()
@@ -266,7 +348,7 @@ class TestConfig:
         with (
             patch("builtins.open", mocker.mock_open(read_data=b"mock_toml_content")),
             patch("lib.config.tomllib.load", return_value=mock_toml_data),
-            pytest.raises(ValueError, match="Version not found in pyproject.toml"),
+            pytest.raises(ValueError, match=r"Version not found in pyproject.toml"),
         ):
             Config._load_version_from_pyproject()
 
@@ -279,7 +361,7 @@ class TestConfig:
         with (
             patch("builtins.open", mocker.mock_open(read_data=b"mock_toml_content")),
             patch("lib.config.tomllib.load", return_value=mock_toml_data),
-            pytest.raises(ValueError, match="Version not found in pyproject.toml"),
+            pytest.raises(ValueError, match=r"Version not found in pyproject.toml"),
         ):
             Config._load_version_from_pyproject()
 
@@ -293,7 +375,7 @@ class TestConfig:
         with (
             patch("builtins.open", mocker.mock_open(read_data=b"mock_toml_content")),
             patch("lib.config.tomllib.load", return_value=mock_toml_data),
-            pytest.raises(ValueError, match="Version not found in pyproject.toml"),
+            pytest.raises(ValueError, match=r"Version not found in pyproject.toml"),
         ):
             Config._load_version_from_pyproject()
 

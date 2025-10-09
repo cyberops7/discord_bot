@@ -23,7 +23,8 @@ RUN apk -U upgrade --no-cache && \
         jq \
         linux-headers \
         make \
-        musl-dev
+        musl-dev \
+        vim
 
 # Install `uv`
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
