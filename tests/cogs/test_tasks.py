@@ -7,7 +7,9 @@ import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
+import feedparser
 import pytest
+from feedparser import FeedParserDict
 from pytest_mock import MockerFixture
 
 from lib.bot import DiscordBot
@@ -418,7 +420,7 @@ class TestTasks:
             ):
                 mock_dt.now.return_value = mock_sunday
                 await tasks_cog.clean_channel_members_task()
-                event_name = "Task - Member Cleanup"
+                event_name = "Task - 🧹 Member Cleanup"
                 log_prefix = ""
         else:
             with (
@@ -426,7 +428,7 @@ class TestTasks:
                 caplog.at_level(logging.INFO),
             ):
                 await tasks_cog.clean_channel_members_task_dry_run()
-                event_name = "Task - Member Cleanup (DRY_RUN)"
+                event_name = "Task - 🧹 Member Cleanup (DRY_RUN)"
                 log_prefix = "DRY_RUN: Would have "
 
         # Verify sleep called for each member
@@ -660,8 +662,32 @@ class TestTasks:
     ) -> None:
         """Test the monitor_youtube_videos method when new videos are found"""
         # Mock feed parser with new videos
+        video1 = FeedParserDict(
+            {
+                "id": "yt:video:abcdef123",
+                "link": "https://www.youtube.com/watch?v=abcdef123",
+                "yt_videoid": "abcdef123",
+                "title": "Test Video 1",
+                "author": "Test Author 1",
+                "published": "2025-10-20T12:00:00+00:00",
+                "summary": "Test Summary 1\nOther summary stuff",
+            }
+        )
+
+        video2 = FeedParserDict(
+            {
+                "id": "yt:video:ghijkl456",
+                "link": "https://www.youtube.com/watch?v=abcdef123",
+                "yt_videoid": "abcdef123",
+                "title": "Test Video 2",
+                "author": "Test Author 2",
+                "published": "2025-10-20T12:00:00+00:00",
+                "summary": "Test Summary 2\nOther summary stuff",
+            }
+        )
+
         mock_feed_parser = MagicMock()
-        mock_feed_parser.parse_rss_feed.return_value = ["video1", "video2"]
+        mock_feed_parser.get_new_videos.return_value = [video1, video2]
         tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
 
         # Mock channel
@@ -679,22 +705,42 @@ class TestTasks:
         # Verify logging
         info_records = [r for r in caplog.records if r.levelname == "INFO"]
         assert any(
-            "Checking test_feed for new videos" in record.message
-            for record in info_records
-        )
-        assert any(
-            "New videos found: ['video1', 'video2']" in record.message
+            f"New videos found for test_feed: [{video1}, {video2}]" in record.message
             for record in info_records
         )
 
         # Verify bot event was logged
         mock_log_bot_event.assert_called_with(
             event="Task - YouTube Video Monitor",
-            details="New videos found for test_feed: ['video1', 'video2']",
+            details=f"New videos found for test_feed: [{video1}, {video2}]",
         )
 
         # Verify channel send was called
-        mock_channel.send.assert_called_once()
+        assert mock_channel.send.call_count == 2
+
+    @async_test
+    async def test_monitor_youtube_videos_with_invalid_entries(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test the monitor_youtube_videos method when invalid entries are found"""
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.get_new_videos.return_value = [
+            {},
+            None,
+            "",
+            [],
+        ]
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        mock_channel = MagicMock(spec=discord.TextChannel)
+        tasks_cog.bot.get_channel = MagicMock(return_value=mock_channel)
+
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_youtube_videos()
+
+        assert len(caplog.records) == len(mock_feed_parser.get_new_videos.return_value)
 
     @async_test
     async def test_monitor_youtube_videos_with_new_videos_announcements_channel(
@@ -707,11 +753,22 @@ class TestTasks:
         Test monitor_youtube_videos method uses the ANNOUNCEMENTS channel
         when DRY_RUN=False (line 192)
         """
-        mock_config.DRY_RUN = False
+        mock_config.DRY_RUN_YOUTUBE = False
 
         # Mock feed parser with new videos
+        video1 = FeedParserDict(
+            {
+                "id": "yt:video:abcdef123",
+                "link": "https://www.youtube.com/watch?v=abcdef123",
+                "yt_videoid": "abcdef123",
+                "title": "Test Video 1",
+                "author": "Test Author",
+                "published": "2025-10-20T12:00:00+00:00",
+                "summary": "Test Summary\nOther summary stuff",
+            }
+        )
         mock_feed_parser = MagicMock()
-        mock_feed_parser.parse_rss_feed.return_value = ["video1"]
+        mock_feed_parser.get_new_videos.return_value = [video1]
         tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
 
         # Mock channel
@@ -738,22 +795,22 @@ class TestTasks:
         """Test the monitor_youtube_videos method when no new videos are found"""
         # Mock feed parser with no new videos
         mock_feed_parser = MagicMock()
-        mock_feed_parser.parse_rss_feed.return_value = []
+        mock_feed_parser.get_new_videos.return_value = []
         tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
 
         tasks_cog.bot.get_channel = MagicMock()
         tasks_cog.bot.log_bot_event = AsyncMock()
 
-        with caplog.at_level(logging.INFO):
+        with caplog.at_level(logging.DEBUG):
             await tasks_cog.monitor_youtube_videos()
 
         # Verify logging
-        info_records = [r for r in caplog.records if r.levelname == "INFO"]
+        debug_records = [r for r in caplog.records if r.levelname == "DEBUG"]
         assert any(
             "Checking test_feed for new videos" in record.message
-            for record in info_records
+            for record in debug_records
         )
-        assert any("No new videos found" in record.message for record in info_records)
+        assert any("No new videos found" in record.message for record in debug_records)
 
         # Verify `channel` was not accessed due to there being no new videos
         tasks_cog.bot.get_channel.assert_not_called()
@@ -778,7 +835,7 @@ class TestTasks:
 
         # Test DRY_RUN = True
         with (
-            patch("lib.cogs.tasks.config.DRY_RUN", new=True),
+            patch("lib.cogs.tasks.config.DRY_RUN_YOUTUBE", new=True),
             patch("lib.cogs.tasks.config.CHANNELS") as mock_channels,
         ):
             mock_channels.BOT_PLAYGROUND = 123
@@ -790,7 +847,7 @@ class TestTasks:
 
         # Test DRY_RUN = False
         with (
-            patch("lib.cogs.tasks.config.DRY_RUN", new=False),
+            patch("lib.cogs.tasks.config.DRY_RUN_YOUTUBE", new=False),
             patch("lib.cogs.tasks.config.CHANNELS") as mock_channels,
         ):
             mock_channels.ANNOUNCEMENTS = 987
@@ -858,6 +915,7 @@ class TestTasks:
     async def test_before_monitor_youtube_videos(
         self,
         caplog: pytest.LogCaptureFixture,
+        mock_config: MagicMock,
         tasks_cog: Tasks,
     ) -> None:
         """Test before_monitor_youtube_videos method"""
@@ -866,6 +924,8 @@ class TestTasks:
             mock_parser_instance = MagicMock()
             mock_parser_class.return_value = mock_parser_instance
             tasks_cog.bot.wait_until_ready = AsyncMock()
+
+            mock_config.DRY_RUN_YOUTUBE = False
 
             with caplog.at_level(logging.INFO):
                 await tasks_cog.before_monitor_youtube_videos()
@@ -906,3 +966,73 @@ class TestTasks:
 
         # Verify bot wait_until_ready was called
         tasks_cog.bot.wait_until_ready.assert_called_once()
+
+    @async_test
+    async def test_before_monitor_youtube_videos_dry_run(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        mock_config: MagicMock,
+        tasks_cog: Tasks,
+    ) -> None:
+        """
+        Test before_monitor_youtube_videos method with
+        DRY_RUN_YOUTUBE=True
+        """
+        # Create a mock video entry that supports attribute access
+        video1 = MagicMock(spec=feedparser.FeedParserDict)
+        video1.id = "yt:video:abcdef123"
+        video1.link = "https://www.youtube.com/watch?v=abcdef123"
+        video1.yt_videoid = "abcdef123"
+        video1.title = "Test Video 1"
+        video1.author = "Test Author"
+        video1.published = "2025-10-20T12:00:00+00:00"
+        video1.summary = "Test Summary\nOther summary stuff"
+
+        with patch("lib.cogs.tasks.youtube.YoutubeFeedParser") as mock_parser_class:
+            mock_parser_instance = MagicMock()
+            mock_parser_class.return_value = mock_parser_instance
+            mock_parser_instance.get_latest_video.return_value = video1
+            tasks_cog.bot.wait_until_ready = AsyncMock()
+
+            mock_config.DRY_RUN_YOUTUBE = True
+
+            mock_channel = MagicMock(spec=discord.TextChannel)
+            tasks_cog.bot.get_channel = MagicMock(return_value=mock_channel)
+
+            with caplog.at_level(logging.INFO):
+                await tasks_cog.before_monitor_youtube_videos()
+
+            info_records = [r for r in caplog.records if r.levelname == "INFO"]
+            assert any(
+                "Sending embed log message to" in record.message
+                for record in info_records
+            )
+
+            # Should be called twice - once for each feed in mock_config.YOUTUBE_FEEDS
+            assert mock_channel.send.call_count == 2
+
+    @async_test
+    async def test_before_monitor_youtube_videos_dry_run_invalid_channel(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        mock_config: MagicMock,
+        tasks_cog: Tasks,
+    ) -> None:
+        """
+        Test before_monitor_youtube_videos method with
+        DRY_RUN_YOUTUBE=True and an invalid channel
+        """
+        with patch("lib.cogs.tasks.youtube.YoutubeFeedParser") as mock_parser_class:
+            mock_parser_instance = MagicMock()
+            mock_parser_class.return_value = mock_parser_instance
+            tasks_cog.bot.wait_until_ready = AsyncMock()
+
+            mock_config.DRY_RUN_YOUTUBE = True
+
+            with caplog.at_level(logging.ERROR):
+                await tasks_cog.before_monitor_youtube_videos()
+
+            assert (
+                "Invalid channel specified in DRY_RUN_YOUTUBE mode:"
+                in caplog.records[-1].message
+            )

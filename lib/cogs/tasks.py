@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands, tasks
+from feedparser import FeedParserDict
 
 from lib import youtube
 from lib.config import config
@@ -99,7 +100,7 @@ class Tasks(commands.Cog):
 
             logger.info("Cleaned %s members.", len(kick_list))
             await self.bot.log_bot_event(
-                event="Task - Member Cleanup",
+                event="Task - 🧹 Member Cleanup",
                 details=f"Cleaned {len(kick_list)} members.",
             )
 
@@ -129,7 +130,7 @@ class Tasks(commands.Cog):
 
         logger.info("DRY_RUN: Would have cleaned %s members.", len(kick_list))
         await self.bot.log_bot_event(
-            event="Task - Member Cleanup (DRY_RUN)",
+            event="Task - 🧹 Member Cleanup (DRY_RUN)",
             details=f"Would have cleaned {len(kick_list)} members.",
         )
 
@@ -142,7 +143,9 @@ class Tasks(commands.Cog):
             msg = f"Guild with ID {config.GUILDS.JIMS_GARAGE} not found"
             raise ValueError(msg)
         logger.info("Cleaning channel members for %s (%s)", guild.name, guild.id)
-        await self.bot.log_bot_event(event="Task - Member Cleanup")
+        await self.bot.log_bot_event(
+            event=f"Task - 🧹 Member Cleanup{' (DRY_RUN)' if config.DRY_RUN else ''}"
+        )
 
         kick_list = set()
 
@@ -172,32 +175,53 @@ class Tasks(commands.Cog):
     @tasks.loop(minutes=5)
     async def monitor_youtube_videos(self) -> None:
         """Monitor YouTube videos for new uploads"""
-
         for feed_name, feed_parser in self.youtube_feeds.items():
-            logger.info("Checking %s for new videos", feed_name)
-            if new_videos := feed_parser.parse_rss_feed():
-                logger.info("New videos found: %s", new_videos)
+            logger.debug("Checking %s for new videos", feed_name)
+            if new_videos := feed_parser.get_new_videos():
+                logger.info("New videos found for %s: %s", feed_name, new_videos)
                 await self.bot.log_bot_event(
                     event="Task - YouTube Video Monitor",
                     details=f"New videos found for {feed_name}: {new_videos}",
                 )
             else:
-                logger.info("No new videos found")
+                logger.debug("No new videos found")
                 continue
 
             # If new videos found, post to the #bot-playground channel if config.DRY_RUN
             # else post to #announcements channel
-            if config.DRY_RUN:
+            if config.DRY_RUN_YOUTUBE:
                 channel = self.bot.get_channel(config.CHANNELS.BOT_PLAYGROUND)
             else:
                 channel = self.bot.get_channel(config.CHANNELS.ANNOUNCEMENTS)
 
             if channel and isinstance(channel, discord.TextChannel):
-                embed = discord.Embed()
+                for video in new_videos:
+                    if not video or not isinstance(video, FeedParserDict):
+                        logger.warning("Invalid YouTube video found: %s", video)
+                        continue
+                    embed = discord.Embed(
+                        title=f"New video posted to {video.get('author', 'Unknown')}",
+                        description=(
+                            f"**[{getattr(video, 'title', 'No title found')}]"
+                            f"({getattr(video, 'link', 'No link found')})**"
+                        ),
+                        color=discord.Color.purple(),
+                    )
+                    embed.add_field(
+                        name="Summary",
+                        value=getattr(video, "summary", "No summary found").split("\n")[
+                            0
+                        ],
+                        inline=False,
+                    )
+                    embed.set_image(url=feed_parser.get_thumbnail_from_entry(video))
+                    logger.info(
+                        "Sending embed log message to %s: %s",
+                        channel.name,
+                        embed.to_dict(),
+                    )
 
-                # TODO @cyberops7: create actual embed
-
-                await channel.send(embed=embed)
+                    await channel.send(embed=embed)
             else:
                 logger.warning(
                     "Could not find channel with ID %s or it is not a TextChannel",
@@ -211,9 +235,47 @@ class Tasks(commands.Cog):
         """Called before the task loop starts"""
         logger.info("monitor_youtube_videos task is starting up...")
         for feed_name, feed_url in config.YOUTUBE_FEEDS.items():
+            logger.info("Initializing YouTube feed parser for %s", feed_name)
             self.youtube_feeds[feed_name] = youtube.YoutubeFeedParser(
                 feed_name.lower(), feed_url
             )
             logger.info("Initialized YouTube feed parser for %s", feed_name)
         logger.info("Initialized %d YouTube video monitors", len(self.youtube_feeds))
         await self.bot.wait_until_ready()
+
+        if config.DRY_RUN_YOUTUBE:
+            channel = self.bot.get_channel(config.CHANNELS.BOT_PLAYGROUND)
+            if not isinstance(channel, discord.TextChannel):
+                logger.error(
+                    "Invalid channel specified in DRY_RUN_YOUTUBE mode: %s", channel
+                )
+                return
+
+            for feed_name, feed in self.youtube_feeds.items():
+                logger.debug(
+                    "DRY_RUN_YOUTUBE mode: posting most recent video for %s",
+                    feed_name.title(),
+                )
+                latest_video = feed.get_latest_video()
+                logger.debug("Latest video: %s", latest_video)
+                embed = discord.Embed(
+                    title=f"(DRY_RUN) Most recent video found for "
+                    f"{getattr(latest_video, 'author', 'Unknown')}",
+                    description=(
+                        f"**[{getattr(latest_video, 'title', 'No title found')}]"
+                        f"({getattr(latest_video, 'link', 'No link found')})**"
+                    ),
+                    color=discord.Color.purple(),
+                )
+                embed.add_field(
+                    name="Summary",
+                    value=getattr(latest_video, "summary", "No summary found").split(
+                        "\n"
+                    )[0],
+                    inline=False,
+                )
+                embed.set_image(url=feed.get_thumbnail_from_entry(latest_video))
+                logger.info(
+                    "Sending embed log message to %s: %s", channel.name, embed.to_dict()
+                )
+                await channel.send(embed=embed)

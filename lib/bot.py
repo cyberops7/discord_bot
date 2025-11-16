@@ -12,7 +12,7 @@ from typing import cast
 import discord
 from discord.ext import commands
 
-from lib.bot_log_context import LogContext
+from lib.bot_log_context import EmbedFieldDict, LogContext
 from lib.config import Any, config
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -180,13 +180,10 @@ class DiscordBot(commands.Bot):
             details=f"Version {config.VERSION}",
         )
 
-    async def on_disconnect(self) -> None:
+    @staticmethod
+    async def on_disconnect() -> None:
+        # Cannot log to Discord since, well...it is disconnected
         logger.warning("Bot disconnected from Discord.")
-        await self.log_bot_event(
-            level="DEBUG",
-            event="Bot Disconnect",
-            details=f"Version {config.VERSION}",
-        )
 
     async def on_resumed(self) -> None:
         logger.info("Bot resumed connection to Discord.")
@@ -266,11 +263,17 @@ class DiscordBot(commands.Bot):
                     inline=bool(embed_field.get("inline", False)),
                 )
 
-        logger.info("Sending embed log message: %s", embed.to_dict())
-
         if context.log_channel is None:
             msg = "Cannot send log message: log_channel is None"
             raise ValueError(msg)
+        if not isinstance(context.log_channel, discord.TextChannel):
+            msg = "Cannot send log message: log_channel is not a TextChannel"
+            raise TypeError(msg)
+        logger.info(
+            "Sending embed log message to %s: %s",
+            context.log_channel.name,
+            embed.to_dict(),
+        )
         return await context.log_channel.send(embed=embed)
 
     @staticmethod
@@ -314,8 +317,8 @@ class DiscordBot(commands.Bot):
                 return await self._send_log_embed(context)
             return await self._send_log_text(context)
 
-        except discord.HTTPException:
-            logger.exception("Failed to send log message")
+        except (AttributeError, discord.HTTPException, ValueError) as e:
+            logger.warning("Error sending log message: %s", e)
             return None
 
     # Convenience methods for different log levels
@@ -352,12 +355,17 @@ class DiscordBot(commands.Bot):
         log_channel: discord.TextChannel | None = None,
     ) -> discord.Message | None:
         """Log a bot-related event"""
-        context = LogContext(
-            log_message=f"**Bot event:** {event}",
-            level=level,
-            action="Bot Event",
-            embed=True,
-        )
+        try:
+            context = LogContext(
+                log_message=f"**Bot event:** {event}",
+                level=level,
+                action="Bot Event",
+                embed=True,
+            )
+        except (AttributeError, ValueError) as e:
+            logger.warning("Error creating log context: %s", e)
+            return None
+
         if details:
             context.log_message += f"\n**Details:** {details}"
         if log_channel:
@@ -388,6 +396,32 @@ class DiscordBot(commands.Bot):
                 f"{'...' if len(message.content) > max_msg_length else ''}"
             )
 
+        extra_embed_fields: list[EmbedFieldDict] = [
+            {
+                "name": "Message",
+                "value": message_snippet if message else None,
+                "inline": False,
+            },
+        ]
+
+        if extra_log_channel:
+            context = LogContext(
+                action=f"Moderation: {action}",
+                log_message=(
+                    f"**{action}** performed on {target.mention} by "
+                    f"{moderator.mention}\n"
+                    f"**Reason:** {reason}"
+                ),
+                embed=True,
+                user=target,
+                channel=channel,
+                level=level,
+                extra_embed_fields=extra_embed_fields,
+                log_channel=extra_log_channel,
+            )
+            await self.log_to_channel(context)
+
+        # Create a new context for the main log channel
         context = LogContext(
             action=f"Moderation: {action}",
             log_message=(
@@ -398,18 +432,9 @@ class DiscordBot(commands.Bot):
             user=target,
             channel=channel,
             level=level,
-            extra_embed_fields=[
-                {
-                    "name": "Message",
-                    "value": message_snippet if message else None,
-                    "inline": False,
-                },
-            ],
+            extra_embed_fields=extra_embed_fields,
+            log_channel=config.LOG_CHANNEL,
         )
-        if extra_log_channel:
-            context.log_channel = extra_log_channel
-            await self.log_to_channel(context)
-        context.log_channel = config.LOG_CHANNEL
         return await self.log_to_channel(context)
 
     async def log_user_action(
@@ -605,6 +630,7 @@ class DiscordBot(commands.Bot):
                 message.author,
                 message.content,
             )
+            logger.warning("Message object: %s", message)
             ban_reason = "Message detected in #mousetrap."
             await self.ban_spammer(ban_reason, message)
 

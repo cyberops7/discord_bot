@@ -88,6 +88,16 @@ handlers:
     maxBytes: "@math 1024 * 1024 * 10"  # 10MB
     mode: a
 
+  file_discord:
+    class: logging.handlers.RotatingFileHandler
+    backupCount: 5
+    encoding: "utf-8"
+    filename: "@format {@env LOG_DIR,log}/discord.log"
+    formatter: standard
+    level: "@env LOG_LEVEL_FILE,INFO"
+    maxBytes: "@math 1024 * 1024 * 10"  # 10MB
+    mode: a
+
   file_json:
     class: logging.handlers.RotatingFileHandler
     backupCount: 5
@@ -114,18 +124,36 @@ handlers:
       # - file_json_api
     respect_handler_level: true
 
-loggers:
-  discord.gateway:
+  queue_discord:
+    class: logging.handlers.QueueHandler
     handlers:
-      - queue
+      - file_discord
+    respect_handler_level: true
+
+loggers:
+  discord:
+    handlers:
+      - queue_discord
+    level: DEBUG
+    propagate: false
+
+  discord.client:
+    handlers:
+      - queue_discord
     level: INFO
     propagate: false
 
-  discord.http:
+  discord.gateway:
     handlers:
-      - queue
+      - queue_discord
     level: INFO
     propagate: false
+  #
+  #  discord.http:
+  #    handlers:
+  #      - queue
+  #    level: INFO
+  #    propagate: false
 
   uvicorn.access:
     handlers:
