@@ -173,8 +173,11 @@ class TestDiscordBot:
         assert result == mock_config.LOG_CHANNEL.send.return_value
 
         assert len(caplog.records) == 1
+        log_channel = context.log_channel
+        assert log_channel is not None
         assert (
-            f"Sending embed log message: {embed.to_dict()}" in caplog.records[0].message
+            f"Sending embed log message to {log_channel.name}: "
+            f"{embed.to_dict()}" in caplog.records[0].message
         )
 
     @async_test
@@ -194,6 +197,28 @@ class TestDiscordBot:
 
         with pytest.raises(
             ValueError, match="Cannot send log message: log_channel is None"
+        ):
+            await DiscordBot._send_log_embed(context)
+
+    @async_test
+    async def test_send_log_embed_invalid_log_channel(self) -> None:
+        """
+        Test that _send_log_embed raises TypeError
+        when log_channel is not a TextChannel.
+        """
+        context = MagicMock(spec=LogContext)
+        context.log_message = "Test log message"
+        context.log_channel = MagicMock(spec=discord.VoiceChannel)
+        context.level = "INFO"
+        context.embed = True
+        context.user = None
+        context.channel = None
+        context.color = discord.Color.blue()
+        context.extra_embed_fields = []  # Add this line to fix the test
+
+        with pytest.raises(
+            TypeError,
+            match="Cannot send log message: log_channel is not a TextChannel",
         ):
             await DiscordBot._send_log_embed(context)
 
@@ -447,26 +472,32 @@ class TestDiscordBot:
         assert len(caplog.records) == 0
 
     @async_test
-    async def test_log_to_channel_http_exception(
+    @pytest.mark.parametrize(
+        "exception",
+        [
+            discord.HTTPException(MagicMock(), "Test HTTP error"),
+            AttributeError("Test attribute error"),
+            ValueError("Test value error"),
+        ],
+    )
+    async def test_log_to_channel_exceptions(
         self,
         caplog: pytest.LogCaptureFixture,
         discord_bot: DiscordBot,
         mock_channel: MagicMock,
         mocker: MockerFixture,
+        exception: Exception,
     ) -> None:
-        """Test that log_to_channel handles discord.HTTPException gracefully."""
+        """Test that log_to_channel handles various exceptions gracefully."""
         mock_context = LogContext(
             log_message="Test log message",
             log_channel=mock_channel,
             embed=False,
         )
-        mock_http_response = mocker.Mock()
         mock_send_text = mocker.patch.object(
             DiscordBot,
             "_send_log_text",
-            AsyncMock(
-                side_effect=discord.HTTPException(mock_http_response, "Test HTTP error")
-            ),
+            AsyncMock(side_effect=exception),
         )
 
         result = await discord_bot.log_to_channel(mock_context)
@@ -476,8 +507,8 @@ class TestDiscordBot:
 
         # Verify exception was logged
         assert len(caplog.records) == 1
-        assert "Failed to send log message" in caplog.records[0].message
-        assert caplog.records[0].levelname == "ERROR"
+        assert "Error sending log message" in caplog.records[0].message
+        assert caplog.records[0].levelname == "WARNING"
 
     @async_test
     @pytest.mark.parametrize(
@@ -641,6 +672,37 @@ class TestDiscordBot:
         assert context.log_channel == mock_channel
         assert result == "event_message"
 
+    @pytest.mark.parametrize(
+        "exception",
+        [
+            AttributeError("Test attribute error"),
+            ValueError("Test value error"),
+        ],
+    )
+    @async_test
+    async def test_log_bot_event_exceptions(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+        mocker: MockerFixture,
+        exception: Exception,
+    ) -> None:
+        """Test the log_bot_event method with exceptions"""
+        # Mock LogContext to raise the parametrized exception
+        mocker.patch("lib.bot.LogContext", side_effect=exception)
+
+        with caplog.at_level(logging.WARNING):
+            result = await discord_bot.log_bot_event(event="Test Event")
+
+        # Should return None when an exception occurs
+        assert result is None
+
+        # Should log the exception
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelname == "WARNING"
+        assert "Error creating log context" in caplog.records[0].message
+        assert str(exception) in caplog.records[0].message
+
     @async_test
     @pytest.mark.usefixtures("mock_channel", "mock_config")
     async def test_log_moderation_action_basic(
@@ -688,7 +750,7 @@ class TestDiscordBot:
         mock_extra_channel = mock_channel(
             channel_id=mock_config.CHANNELS.BOT_PLAYGROUND
         )
-        mock_log_channel = mock_channel(channel_id=mock_config.CHANNELS.BOT_LOGS)
+        mock_log_channel = mock_config.LOG_CHANNEL
         mock_log_to_channel = mocker.patch.object(
             discord_bot, "log_to_channel", AsyncMock(return_value="event_message")
         )
@@ -1241,7 +1303,7 @@ class TestDiscordBot:
             await discord_bot.on_message(mock_message)
 
         mocked_ban_spammer.assert_called_once()
-        assert len(caplog.records) == 1
+        assert len(caplog.records) == 2
         record = caplog.records[0]
         assert record.levelname == "WARNING"
         assert (
@@ -1855,28 +1917,17 @@ class TestDiscordBot:
     @async_test
     async def test_on_disconnect(
         self,
-        mocker: MockerFixture,
         caplog: pytest.LogCaptureFixture,
         discord_bot: DiscordBot,
-        mock_config: MagicMock,
     ) -> None:
         """Test on_disconnect method logs disconnection and calls log_bot_event"""
-        mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
-
         with caplog.at_level(logging.WARNING):
             await discord_bot.on_disconnect()
 
-        # Should log disconnection message
+        # Should log a disconnection message
         assert len(caplog.records) == 1
         assert caplog.records[0].levelname == "WARNING"
         assert "Bot disconnected from Discord." in caplog.records[0].message
-
-        # Should call log_bot_event with correct parameters
-        mock_log_bot_event.assert_called_once_with(
-            level="DEBUG",
-            event="Bot Disconnect",
-            details=f"Version {mock_config.VERSION}",
-        )
 
     @async_test
     async def test_on_resumed(

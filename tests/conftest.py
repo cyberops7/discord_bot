@@ -68,7 +68,7 @@ def mock_channel(channel_id: int = 999) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def mock_config(
-    request: pytest.FixtureRequest, mock_channel: MagicMock
+    request: pytest.FixtureRequest,
 ) -> Generator[MagicMock, None, None]:  # noqa: UP043 unnecessary default type args
     """Mock the config object for all imports"""
     # Bypass the fixture if the test is marked with @pytest.mark.no_mock_config
@@ -88,8 +88,13 @@ def mock_config(
     mock_cfg.CHANNELS.MOUSETRAP = 456
     mock_cfg.CHANNELS.RULES = 789
     mock_cfg.DRY_RUN = False
-    mock_cfg.LOG_CHANNEL = mock_channel(channel_id=mock_cfg.CHANNELS.BOT_LOGS)
-    mock_cfg.LOG_CHANNEL.send = AsyncMock()
+    # Create LOG_CHANNEL mock directly instead of calling mock_channel fixture
+    log_channel = MagicMock(spec=discord.TextChannel)
+    log_channel.id = mock_cfg.CHANNELS.BOT_LOGS
+    log_channel.mention = f"<#{mock_cfg.CHANNELS.BOT_LOGS}>"
+    log_channel.name = "bot-logs"
+    log_channel.send = AsyncMock()
+    mock_cfg.LOG_CHANNEL = log_channel
     mock_cfg.ROLES.ADMIN = 11111
     mock_cfg.ROLES.JIMS_GARAGE = 22222
     mock_cfg.ROLES.MOD = 33333

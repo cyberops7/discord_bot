@@ -34,7 +34,10 @@ class LogContext:
                 self.log_channel = config.LOG_CHANNEL
                 logger.debug("Using default log channel")
             else:
-                msg = "Logging channel not found."
+                msg = (
+                    f"Logging channel not found, unable to send log message "
+                    f"to Discord: {self.log_message}"
+                )
                 raise AttributeError(msg)
 
     @staticmethod
