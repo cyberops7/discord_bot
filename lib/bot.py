@@ -34,7 +34,7 @@ class DiscordBot(commands.Bot):
     async def _load_cogs(self) -> None:
         """Dynamically load all cogs from the lib/cogs directory"""
         logger.info("Loading cogs...")
-        logger.info("Bot cogs: %s", self.cogs)
+        logger.info("Bot cogs: %s", list(self.cogs.keys()))
         cogs_dir = Path("lib/cogs")
 
         if not cogs_dir.exists():
@@ -109,7 +109,7 @@ class DiscordBot(commands.Bot):
                 "Failed to load %d cogs: %s", len(failed_cogs), ", ".join(failed_cogs)
             )
 
-        logger.info("Bot cogs: %s", self.cogs)
+        logger.info("Bot cogs: %s", list(self.cogs.keys()))
 
     async def on_ready(self) -> None:
         """Called when the bot is ready"""
@@ -176,7 +176,7 @@ class DiscordBot(commands.Bot):
         logger.info("Bot connected to Discord.")
         await self.log_bot_event(
             level="DEBUG",
-            event="Bot Reconnect",
+            event="Bot Connected",
             details=f"Version {config.VERSION}",
         )
 
@@ -185,13 +185,12 @@ class DiscordBot(commands.Bot):
         # Cannot log to Discord since, well...it is disconnected
         logger.warning("Bot disconnected from Discord.")
 
-    async def on_resumed(self) -> None:
+    @staticmethod
+    async def on_resumed() -> None:
+        # No need to log this to Discord
+        # It happens frequently as part of normal operations; see:
+        # https://github.com/Rapptz/discord.py/discussions/9722#discussioncomment-8400265
         logger.info("Bot resumed connection to Discord.")
-        await self.log_bot_event(
-            level="DEBUG",
-            event="Bot Reconnect",
-            details=f"Version {config.VERSION}",
-        )
 
     async def close(self) -> None:
         logger.info("Closing bot...")
