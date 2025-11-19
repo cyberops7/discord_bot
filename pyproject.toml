@@ -1,34 +1,34 @@
 [project]
 name = "discord_bot"
-version = "0.6.1"
+version = "0.6.2"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "click<8.2", # 8.2+ breaks pyre-check
-    "colorlog>=6.9.0",
+    "colorlog>=6.10.1",
     "discord>=2.3.2",
     "dotenv>=0.9.9",
-    "fastapi>=0.119.0",
+    "fastapi>=0.121.2",
     "feedparser>=6.0.12",
     "pyyaml>=6.0.3",
-    "uvicorn>=0.37.0",
+    "uvicorn>=0.38.0",
 ]
 
 [dependency-groups]
 dev = [
-    "bandit>=1.8.6",
+    "bandit>=1.9.1",
     "invoke>=2.2.1",
-    "pre-commit>=4.3.0",
+    "pre-commit>=4.4.0",
     "pyre-check>=0.9.23",
-    "ruff>=0.14.0",
+    "ruff>=0.14.5",
     "shellcheck-py>=0.11.0.1",
     "yamllint>=1.35.1",
 ]
 test = [
     "httpx>=0.28.1",
-    "pytest>=8.4.2",
-    "pytest-asyncio>=1.2.0",
+    "pytest>=9.0.1",
+    "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
     "pytest-env>=1.2.0",
     "pytest-mock>=3.15.1",
@@ -55,17 +55,17 @@ skips = [
 project-includes = ["**/*"]
 project-excludes = ["**/*venv/**/*"]
 
-[tool.pytest.ini_options]
-addopts = """
-    --color=yes
-    --cov=lib
-    --cov=main
-    --cov-branch
-    --cov-fail-under=100
-    --cov-report html
-    --cov-report term-missing
-    --verbose
-    """
+[tool.pytest]
+addopts = [
+    "--color=yes",
+    "--cov=lib",
+    "--cov=main",
+    "--cov-branch",
+    "--cov-fail-under=100",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--verbose",
+]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 env = [

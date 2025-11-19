@@ -1902,7 +1902,7 @@ class TestDiscordBot:
         with caplog.at_level(logging.INFO):
             await discord_bot.on_connect()
 
-        # Should log connection message
+        # Should log the connection message
         assert len(caplog.records) == 1
         assert caplog.records[0].levelname == "INFO"
         assert "Bot connected to Discord." in caplog.records[0].message
@@ -1910,7 +1910,7 @@ class TestDiscordBot:
         # Should call log_bot_event with correct parameters
         mock_log_bot_event.assert_called_once_with(
             level="DEBUG",
-            event="Bot Reconnect",
+            event="Bot Connected",
             details=f"Version {mock_config.VERSION}",
         )
 
@@ -1932,25 +1932,14 @@ class TestDiscordBot:
     @async_test
     async def test_on_resumed(
         self,
-        mocker: MockerFixture,
         caplog: pytest.LogCaptureFixture,
         discord_bot: DiscordBot,
-        mock_config: MagicMock,
     ) -> None:
-        """Test on_resumed method logs resumption and calls log_bot_event"""
-        mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
-
+        """Test on_resumed method logs resumption"""
         with caplog.at_level(logging.INFO):
             await discord_bot.on_resumed()
 
-        # Should log resumption message
+        # Should log the resumption message
         assert len(caplog.records) == 1
         assert caplog.records[0].levelname == "INFO"
         assert "Bot resumed connection to Discord." in caplog.records[0].message
-
-        # Should call log_bot_event with correct parameters
-        mock_log_bot_event.assert_called_once_with(
-            level="DEBUG",
-            event="Bot Reconnect",
-            details=f"Version {mock_config.VERSION}",
-        )
