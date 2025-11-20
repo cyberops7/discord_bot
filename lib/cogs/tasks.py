@@ -221,7 +221,7 @@ class Tasks(commands.Cog):
                         embed.to_dict(),
                     )
 
-                    await channel.send(embed=embed)
+                    await channel.send(content="<@everyone>", embed=embed)
             else:
                 logger.warning(
                     "Could not find channel with ID %s or it is not a TextChannel",
@@ -278,4 +278,5 @@ class Tasks(commands.Cog):
                 logger.info(
                     "Sending embed log message to %s: %s", channel.name, embed.to_dict()
                 )
-                await channel.send(embed=embed)
+                # Mention server mod in the message(s) as a test
+                await channel.send(content="<@1086729646864871454>", embed=embed)
