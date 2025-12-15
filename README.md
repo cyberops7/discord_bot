@@ -34,14 +34,14 @@ via Docker, Docker Compose, or Kubernetes.
 
 The following environment variables are supported:
 
-| ENV VAR          | Required | Use                                                    | Default  |
-|------------------|----------|--------------------------------------------------------|----------|
-| API_PORT         | No       | Set the port the API listens on (inside the container) | 8080     |
-| BOT_TOKEN        | YES      | The token for your Discord bot                         | N/A      |
-| LOG_DIR          | No       | Directory where the bot's logs will be written         | /app/log |
-| LOG_FILE         | No       | Filename the logs will be written to                   | bot.log  |
-| LOG_LEVEL_FILE   | No       | Log level written to the log file                      | INFO     |
-| LOG_LEVEL_STDOUT | No       | Log level written to stdout                            | INFO     |
+| ENV VAR          | Required | Use                                        | Default  |
+|------------------|----------|--------------------------------------------|----------|
+| API_PORT         | No       | Port the API listens on (in container)     | 8080     |
+| BOT_TOKEN        | YES      | Discord bot token                          | N/A      |
+| LOG_DIR          | No       | Directory for bot logs                     | /app/log |
+| LOG_FILE         | No       | Log filename                               | bot.log  |
+| LOG_LEVEL_FILE   | No       | Log level for file output                  | INFO     |
+| LOG_LEVEL_STDOUT | No       | Log level for stdout output                | INFO     |
 
 If all goes well, you should see logs like the following:
 

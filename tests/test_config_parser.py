@@ -44,6 +44,11 @@ def test_eval_ast_invalid_expression_type() -> None:
         eval_ast("[1, 2, 3]")
 
 
+def test_eval_ast_non_numeric_constant() -> None:
+    with pytest.raises(TypeError, match="Expected numeric constant"):
+        eval_ast("'string'")
+
+
 def test_eval_ast_failure() -> None:
     with pytest.raises(ValueError, match="Failed to evaluate expression"):
         eval_ast("1 / 0")
@@ -200,7 +205,8 @@ def test_resolve_value_simple_str() -> None:
 @pytest.mark.parametrize("val", [123, 123.456, True, False])
 def test_resolve_value_non_str(val: float | bool) -> None:
     # noinspection PyTypeChecker
-    assert resolve_value(val) == val  # pyre-ignore[6]
+    # pyrefly: ignore[bad-argument-type]
+    assert resolve_value(val) == val
 
 
 def test_resolve_value_env_token(monkeypatch: pytest.MonkeyPatch) -> None:

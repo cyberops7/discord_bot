@@ -2,28 +2,28 @@
 
 * [General Guidelines](#general-guidelines)
 * [Key Tools](#key-tools)
-  * [uv](#uv)
-  * [Invoke](#invoke)
-  * [Dev Scripts](#dev-scripts)
-  * [Pre-Commit Hooks](#pre-commit-hooks)
+   * [uv](#uv)
+   * [Invoke](#invoke)
+   * [Dev Scripts](#dev-scripts)
+   * [Pre-Commit Hooks](#pre-commit-hooks)
 * [Dev Environment Setup](#dev-environment-setup)
-  * [Install / Setup `uv`](#install--setup-uv)
-  * [Sync Python Environment](#sync-python-environment)
-  * [Install Development Tools](#install-development-tools)
-  * [Create your own `.env` file](#create-your-own-env-file)
-  * [Install Pre-Commit Hooks](#install-pre-commit-hooks)
-  * [Set up Invoke shell completion](#set-up-invoke-shell-completion)
+   * [Install / Setup `uv`](#install--setup-uv)
+   * [Sync Python Environment](#sync-python-environment)
+   * [Install Development Tools](#install-development-tools)
+   * [Create your own `.env` file](#create-your-own-env-file)
+   * [Install Pre-Commit Hooks](#install-pre-commit-hooks)
+   * [Set up Invoke shell completion](#set-up-invoke-shell-completion)
 * [Code Quality](#code-quality)
-  * [Markdownlint Notes](#markdownlint-notes)
-  * [Ruff Notes](#ruff-notes)
-  * [Pyre Notes](#pyre-notes)
+   * [Markdownlint Notes](#markdownlint-notes)
+   * [Ruff Notes](#ruff-notes)
+   * [Pyre Notes](#pyre-notes)
 * [Container Scanning](#container-scanning)
 * [Dependencies](#dependencies)
-  * [Adding dependencies](#adding-dependencies)
-  * [Updating dependencies](#updating-dependencies)
+   * [Adding dependencies](#adding-dependencies)
+   * [Updating dependencies](#updating-dependencies)
 * [Running the app](#running-the-app)
 * [Testing](#testing)
-  * [Testing GitHub Actions / Workflows](#testing-github-actions--workflows)
+   * [Testing GitHub Actions / Workflows](#testing-github-actions--workflows)
 
 ## General Guidelines
 
@@ -34,12 +34,13 @@
 * With every PR, you'll be required to increment the app `version` found in
   `pyproject.toml`. This `version` is used to generate the tags for the new
   image built after each PR, and each PR needs to result in a unique tag.
-  * The `version` uses [semantic versioning](https://semver.org/):
+   * The `version` uses [semantic versioning](https://semver.org/):
 
 > Given a version number MAJOR.MINOR.PATCH, increment the:
-> 1. MAJOR version when you make incompatible API changes
-> 2. MINOR version when you add functionality in a backward compatible manner
-> 3. PATCH version when you make backward compatible bug fixes
+>
+> * MAJOR version when you make incompatible API changes
+> * MINOR version when you add functionality in a backward compatible manner
+> * PATCH version when you make backward compatible bug fixes
 
 * Create unit tests for your additions/changes. See [Testing](#testing) for
   more details.
@@ -199,7 +200,8 @@ pre-commit install
 ### Set up Invoke shell completion
 
 To make things easier using `invoke`/`inv`, you can set up tab completion for
-your shell. Invoke has docs on this [here](https://docs.pyinvoke.org/en/stable/invoke.html#shell-tab-completion).
+your shell. Invoke has
+[shell tab completion documentation](https://docs.pyinvoke.org/en/stable/invoke.html#shell-tab-completion).
 
 Essentially, `invoke` can generate a completion script for you that you need
 to source in your shell's rc file. If you're using `zsh`, you can add:
@@ -220,16 +222,16 @@ to source in your shell's rc file. If you're using `zsh`, you can add:
 
 This project leverages the following tools:
 
-| Tool         | Use                           | Reference                                                 |
-|--------------|-------------------------------|-----------------------------------------------------------|
-| bandit       | Python security linting       | https://bandit.readthedocs.io/en/latest/start.html        |
-| hadolint     | Dockerfile linting            | https://github.com/hadolint/hadolint?tab=readme-ov-file   |
-| markdownlint | Markdown linting              | https://github.com/markdownlint/markdownlint              |
-| pyre         | Enforcing Python typing       | https://pyre-check.org/                                   |
-| ruff         | Python formatting and linting | https://docs.astral.sh/ruff/                              |
-| shellcheck   | Bash linting                  | https://github.com/koalaman/shellcheck?tab=readme-ov-file |
-| trivy        | Vulnerability scanning        | https://trivy.dev/latest/docs/                            |
-| yamllint     | Yaml linting                  | https://yamllint.readthedocs.io/en/stable/                |
+| Tool         | Use                           | Reference |
+|--------------|-------------------------------|-----------|
+| bandit       | Python security linting       | [bandit documentation](https://bandit.readthedocs.io/en/latest/start.html) |
+| hadolint     | Dockerfile linting            | [hadolint repository](https://github.com/hadolint/hadolint?tab=readme-ov-file) |
+| markdownlint | Markdown linting              | [markdownlint repository](https://github.com/markdownlint/markdownlint) |
+| pyre         | Enforcing Python typing       | [pyre documentation](https://pyre-check.org/) |
+| ruff         | Python formatting and linting | [ruff documentation](https://docs.astral.sh/ruff/) |
+| shellcheck   | Bash linting                  | [shellcheck repository](https://github.com/koalaman/shellcheck?tab=readme-ov-file) |
+| trivy        | Vulnerability scanning        | [trivy documentation](https://trivy.dev/latest/docs/) |
+| yamllint     | Yaml linting                  | [yamllint documentation](https://yamllint.readthedocs.io/en/stable/) |
 
 Clean scans from all of these tools will be required for accepting Pull
 Requests.

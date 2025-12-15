@@ -48,8 +48,9 @@ def test_bot(mocker: MockerFixture, request: pytest.FixtureRequest) -> DiscordBo
     if not user:
         bot.user = None
     else:
-        bot.user = mocker.MagicMock(spec=ClientUser)
-        bot.user.__str__.return_value = user
+        user_mock = mocker.MagicMock(spec=ClientUser)
+        user_mock.__str__ = mocker.MagicMock(return_value=user)
+        bot.user = user_mock
 
     return cast("DiscordBot", bot)
 
@@ -87,7 +88,9 @@ async def test_lifespan_success(mocker: MockerFixture) -> None:
     mock_app.state = mocker.MagicMock()
 
     # Use the lifespan context manager
-    async with lifespan(mock_app):  # pyre-ignore[16] - Provided dynamically
+    async with lifespan(
+        mock_app
+    ):  # pyrefly: ignore[missing-attribute] - Provided dynamically
         # Verify startup behavior
         mock_intents.all.assert_called_once()
         mock_discord_bot.assert_called_once_with(
@@ -133,7 +136,9 @@ async def test_lifespan_no_bot_token(
 
     # Expect a RuntimeError when no BOT_TOKEN is provided
     with pytest.raises(RuntimeError, match=r"BOT_TOKEN is required to start the bot."):
-        async with lifespan(mock_app):  # pyre-ignore[16] - Provided dynamically
+        async with lifespan(
+            mock_app
+        ):  # pyrefly: ignore[missing-attribute] - Provided dynamically
             pass
 
     # Verify error logging
@@ -166,7 +171,9 @@ async def test_lifespan_cleanup_on_exception(mocker: MockerFixture) -> None:
 
     # Create a function that will raise the exception
     async def run_lifespan_with_exception() -> None:
-        async with lifespan(mock_app):  # pyre-ignore[16] - Provided dynamically
+        async with lifespan(
+            mock_app
+        ):  # pyrefly: ignore[missing-attribute] - Provided dynamically
             msg = "Test exception"
             raise ValueError(msg)
 

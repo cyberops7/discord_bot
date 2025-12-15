@@ -200,18 +200,29 @@ class TestTasks:
     @pytest.mark.parametrize("dry_run", [True, False])
     @async_test
     async def test_cog_unload(
-        self, tasks_cog: Tasks, mock_config: MagicMock, dry_run: bool
+        self,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+        mocker: MockerFixture,
+        dry_run: bool,
     ) -> None:
         """Test that cog_unload cancels the correct task"""
         mock_config.DRY_RUN = dry_run
+
+        # Spy on the cancel methods to track calls
+        dry_run_cancel_spy = mocker.spy(
+            tasks_cog.clean_channel_members_task_dry_run, "cancel"
+        )
+        normal_cancel_spy = mocker.spy(tasks_cog.clean_channel_members_task, "cancel")
+
         await tasks_cog.cog_unload()
 
         if dry_run:
-            tasks_cog.clean_channel_members_task_dry_run.cancel.assert_called_once()
-            tasks_cog.clean_channel_members_task.cancel.assert_not_called()
+            dry_run_cancel_spy.assert_called_once()
+            normal_cancel_spy.assert_not_called()
         else:
-            tasks_cog.clean_channel_members_task.cancel.assert_called_once()
-            tasks_cog.clean_channel_members_task_dry_run.cancel.assert_not_called()
+            normal_cancel_spy.assert_called_once()
+            dry_run_cancel_spy.assert_not_called()
 
     @async_test
     async def test_before_clean_channel_members(

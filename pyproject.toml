@@ -1,6 +1,6 @@
 [project]
 name = "discord_bot"
-version = "0.6.3"
+version = "0.7.0"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -21,6 +21,7 @@ dev = [
     "invoke>=2.2.1",
     "pre-commit>=4.4.0",
     "pyre-check>=0.9.23",
+    "pyrefly>=0.45.2",
     "ruff>=0.14.5",
     "shellcheck-py>=0.11.0.1",
     "yamllint>=1.35.1",
@@ -51,9 +52,15 @@ skips = [
 #source_directories = [".", ".venv", ".venv/lib/python3.13"]
 #strict = true
 
+#[tool.pyrefly]
+#project-includes = ["**/*"]
+#project-excludes = ["**/*venv/**/*"]
 [tool.pyrefly]
-project-includes = ["**/*"]
-project-excludes = ["**/*venv/**/*"]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
+search-path = ["stubs"]
 
 [tool.pytest]
 addopts = [

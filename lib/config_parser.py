@@ -67,6 +67,9 @@ def eval_ast(expr: str) -> int | float:
         node: ast.Constant | ast.BinOp | ast.UnaryOp | ast.expr,
     ) -> int | float:
         if isinstance(node, ast.Constant):  # Numbers (e.g., 1, 2, 3)
+            if not isinstance(node.value, int | float):
+                msg = f"Expected numeric constant, got {type(node.value).__name__}"
+                raise TypeError(msg)
             return node.value
         if isinstance(node, ast.BinOp):  # Binary operations (e.g., 2 + 3, 4 * 5)
             if type(node.op) not in ALLOWED_BINARY_OPERATORS:

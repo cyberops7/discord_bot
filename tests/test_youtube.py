@@ -7,7 +7,7 @@ from email.message import EmailMessage
 from unittest.mock import MagicMock, patch
 
 import pytest
-from feedparser.util import FeedParserDict
+from feedparser import FeedParserDict
 
 from lib.youtube import YoutubeFeedParser
 

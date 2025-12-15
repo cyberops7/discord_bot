@@ -71,9 +71,9 @@ class YoutubeFeedParser:
         """Get the latest video from the feed"""
         return feedparser.parse(self.feed_url).entries[0]
 
-    def get_new_videos(self) -> list[FeedParserDict | None]:
+    def get_new_videos(self) -> list[FeedParserDict]:
         """Parse the YouTube RSS feed and return new videos"""
-        new_videos = []
+        new_videos: list[FeedParserDict] = []
         try:
             # Parse the RSS feed
             feed = feedparser.parse(self.feed_url)

@@ -4,7 +4,7 @@ import datetime
 import importlib
 import logging
 from types import ModuleType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 if TYPE_CHECKING:
@@ -345,9 +345,7 @@ class TestDiscordBot:
         """Test sending a basic log text without user or channel details."""
         # Arrange
         mock_send = mocker.patch.object(mock_channel, "send", AsyncMock())
-        timestamp = datetime.datetime.now(
-            cast("datetime.tzinfo", config.TIMEZONE)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.now(config.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
         context = LogContext(
             log_message="Test log message",
             log_channel=mock_channel,
@@ -395,9 +393,7 @@ class TestDiscordBot:
     ) -> None:
         """Test sending a log text with user and channel details."""
         mock_send = mocker.patch.object(mock_channel, "send", AsyncMock())
-        timestamp = datetime.datetime.now(
-            cast("datetime.tzinfo", config.TIMEZONE)
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.now(config.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
         mock_channel.mention = "#test-channel"
 
         context = LogContext(

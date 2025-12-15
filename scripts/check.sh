@@ -82,8 +82,8 @@ run_check "Ruff Lint" \
 run_check "Bandit Security Lint" \
     "uv run bandit -c pyproject.toml -r ./"
 
-run_check "Pyre Type Check" \
-    "pyre check"
+run_check "Pyrefly Type Check" \
+    "uv run pyrefly check"
 
 # Uncomment the following block for Pyright checks if needed
 # run_check "Pyright Type Check" \
@@ -96,7 +96,7 @@ run_check "Dockerfile Lint (Hadolint) - \"docker/Dockerfile-test\"" \
     "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile-test"
 
 run_check "Markdown Lint" \
-    "docker run --rm -i -v ./:/data markdownlint/markdownlint ./ .github/"
+    "docker run --rm -i -v ./:/data markdownlint/markdownlint ./ .github/ docs/"
 
 run_check "ShellCheck Lint" \
     "shellcheck -x \"${REPO_DIR}\"/scripts/*.sh"
