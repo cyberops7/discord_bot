@@ -57,7 +57,10 @@ class TestBasicCommands:
     ) -> None:
         """Test the hello command responds correctly"""
         with caplog.at_level(logging.INFO):
-            await basic_commands_cog.hello.callback(basic_commands_cog, mock_context)  # type: ignore[misc]
+            await basic_commands_cog.hello.callback(
+                basic_commands_cog,  # pyrefly: ignore[bad-argument-type]
+                mock_context,  # pyrefly: ignore[bad-argument-count]
+            )
 
         mock_context.send.assert_called_once_with("Hello")
         assert len(caplog.records) == 1
@@ -75,7 +78,10 @@ class TestBasicCommands:
     ) -> None:
         """Test the ping command responds correctly"""
         with caplog.at_level(logging.INFO):
-            await basic_commands_cog.ping.callback(basic_commands_cog, mock_context)  # type: ignore[misc]
+            await basic_commands_cog.ping.callback(
+                basic_commands_cog,  # pyrefly: ignore[bad-argument-type]
+                mock_context,  # pyrefly: ignore[bad-argument-count]
+            )
 
         mock_context.send.assert_called_once_with("Pong")
         assert len(caplog.records) == 1

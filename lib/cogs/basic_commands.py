@@ -54,7 +54,9 @@ class BasicCommands(commands.Cog):
             interaction.user,
             interaction.channel,
         )
-        await interaction.response.send_message("Hello world.")  # type: ignore[attr-defined]
+        await interaction.response.send_message(
+            "Hello world."
+        )  # pyrefly: ignore[attr-defined]
 
     @discord.app_commands.command(  # pyrefly: ignore[unsupported-decorator]
         name="ping",
@@ -105,7 +107,9 @@ class BasicCommands(commands.Cog):
         start_time = time.perf_counter()
 
         # Send initial response to measure API response time
-        await interaction.response.send_message(embed=embed)  # type: ignore[attr-defined]
+        await interaction.response.send_message(
+            embed=embed
+        )  # pyrefly: ignore[attr-defined]
 
         # Calculate API response time
         end_time = time.perf_counter()
