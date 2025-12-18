@@ -75,7 +75,7 @@ The `.pre-commit-config.yaml` defines three hooks that run automatically:
       - ruff format (Python formatting)
       - ruff check (Python linting)
       - bandit (security linting)
-      - Type checking (pyre check or pyrefly check, depending on configuration)
+      - Type checking (pyrefly check)
       - hadolint (Dockerfile linting)
       - markdownlint (Markdown linting)
       - yamllint (YAML linting)
@@ -154,10 +154,7 @@ pytest path/to/test_file.py  # Run specific test file
 pytest path/to/test_file.py::test_function  # Run single test
 
 # Type checking
-pyre check                # Run Pyre type checker
-pyre                      # Start Pyre server for incremental checks
-pyre restart              # Restart Pyre server (needed after config changes)
-pyre stop                 # Stop Pyre server
+pyrefly check             # Run Pyrefly type checker
 
 # Linting individual tools (from within venv)
 ruff format               # Format Python files
@@ -298,7 +295,7 @@ uv run invoke check
 All PRs must pass:
 
 - **ruff**: Python formatting and linting (configured in pyproject.toml)
-- **pyre**: Strict type checking
+- **pyrefly**: Strict type checking
 - **bandit**: Security linting
 - **pytest**: 100% test coverage required (including branch coverage)
 - **trivy**: Container vulnerability scanning
@@ -313,22 +310,26 @@ All PRs must pass:
    main.py
 2. **Build Discord features around DiscordBot class**: Add methods to
    `lib/bot.py` or create new cogs in `lib/cogs/`
-3. **Use the logger, not print()**: Import logging and use logger throughout
-4. **Version bumping**: Every PR must increment the version in `pyproject.toml`
+3. **Fix errors immediately**: When encountering lint, type check, or unit
+   test errors, fix them immediately rather than investigating whether they are
+   pre-existing issues. The pre-commit hooks ensure quality, so any failure
+   should be addressed right away.
+4. **Use the logger, not print()**: Import logging and use logger throughout
+5. **Version bumping**: Every PR must increment the version in `pyproject.toml`
    following semantic versioning
-5. **Configuration**: All configuration values go in `conf/config.yaml`, access
+6. **Configuration**: All configuration values go in `conf/config.yaml`, access
    via the `config` singleton
-6. **Environment variables**: Use `.env` file for local development
+7. **Environment variables**: Use `.env` file for local development
    (gitignored). Environment variables override config.yaml values.
-7. **Cog structure**: New cogs are automatically loaded from `lib/cogs/` if
+8. **Cog structure**: New cogs are automatically loaded from `lib/cogs/` if
    they inherit from `commands.Cog`
-8. **Background tasks**: Use `discord.ext.tasks` decorators and implement in
+9. **Background tasks**: Use `discord.ext.tasks` decorators and implement in
    cogs (see `lib/cogs/tasks.py`)
-9. **Type hints**: Use strict typing throughout. Pyre is configured for strict
-   mode.
-10. **DRY_RUN mode**: Respect `config.DRY_RUN` flag for testing without side
+10. **Type hints**: Use strict typing throughout. Pyrefly is configured for
+    strict mode.
+11. **DRY_RUN mode**: Respect `config.DRY_RUN` flag for testing without side
     effects
-11. **Code formatting**: Always run `uv run ruff format` before running checks
+12. **Code formatting**: Always run `uv run ruff format` before running checks
     or committing code
 
 ## Configuration System
@@ -367,7 +368,6 @@ Container environment variables: `API_PORT`, `BOT_TOKEN`, `LOG_DIR`,
 - `pyproject.toml`: Python project metadata, dependencies, and tool
   configurations
 - `conf/config.yaml`: Application configuration
-- `.pyre_configuration`: Pyre type checker settings
 - `tasks.py`: Invoke task definitions for common operations
 - `scripts/`: Bash scripts for build, test, scan operations (wrapped by invoke
   tasks)

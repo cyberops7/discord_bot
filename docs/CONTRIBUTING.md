@@ -227,7 +227,7 @@ This project leverages the following tools:
 | bandit       | Python security linting       | [bandit documentation](https://bandit.readthedocs.io/en/latest/start.html) |
 | hadolint     | Dockerfile linting            | [hadolint repository](https://github.com/hadolint/hadolint?tab=readme-ov-file) |
 | markdownlint | Markdown linting              | [markdownlint repository](https://github.com/markdownlint/markdownlint) |
-| pyre         | Enforcing Python typing       | [pyre documentation](https://pyre-check.org/) |
+| pyrefly      | Enforcing Python typing       | [pyrefly documentation](https://pyrefly.org/en/docs/) |
 | ruff         | Python formatting and linting | [ruff documentation](https://docs.astral.sh/ruff/) |
 | shellcheck   | Bash linting                  | [shellcheck repository](https://github.com/koalaman/shellcheck?tab=readme-ov-file) |
 | trivy        | Vulnerability scanning        | [trivy documentation](https://trivy.dev/latest/docs/) |
@@ -267,53 +267,26 @@ to run `ruff`'s linting checks. Both of these are included as part of
 `invoke check`, but it can be useful to run them separately when working
 through a longer list of things to fix.
 
-### Pyre Notes
+### Pyrefly Notes
 
-Pyre will need to be run with the virtual environment active. From within the
-venv, you can run:
+Pyrefly will need to be run with the virtual environment active. From within
+the venv, you can run:
 
 ```shell
-pyre check
+pyrefly check
 ```
 
 From outside the venv, you can run:
 
 ```shell
-uv run pyre check
+uv run pyrefly check
 ```
 
-If you simply run `pyre`, that starts up a background `pyre` server that works
-together with `watchman` to enable doing incremental `pyre` checks on
-changed files.
+Pyrefly configuration is in `pyproject.toml` under the `[tool.pyrefly]`
+section. The configuration includes:
 
-If you have `pyre` running in the background and make updates to
-`.pyre_configuration`, you need to run the following to pick up the
-new configuration:
-
-```shell
-pyre restart
-```
-
-Other related commands:
-
-* See the list of running servers:
-
-   ```shell
-   pyre servers
-   ```
-
-* Stop the `pyre` server:
-
-   ```shell
-   pyre stop
-   ```
-
-* Stop all `pyre` servers (I have ended up with multiple `pyre` processes
-  running before when experimenting with `pyre`):
-
-   ```shell
-   pyre kill
-   ```
+* `project-includes`: Patterns for files to type-check
+* `search-path`: Additional directories for type stubs (e.g., custom stubs)
 
 ## Container Scanning
 

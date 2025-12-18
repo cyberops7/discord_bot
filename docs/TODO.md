@@ -62,11 +62,10 @@
 - [ ] Use trivy as a container instead of an installed binary?
 - [ ] Cache uv/venv in check-test workflow
 - [ ] Move dot files into a .conf directory?
-- [ ] `pyre analyze`? `pyre infer`? `pyre persistent`?
 - [ ] markdownlint -> markdownlint-cli2?
    - The current solution seems poorly maintained, is missing features like
      inline exclusions.
-- [ ] Migrate from pyre to pyrefly (now in beta)
+- [x] Migrate from pyre to pyrefly (now in beta)
 
 ### Makefile / Core Functions
 
@@ -80,7 +79,6 @@
    - [x] Add shellcheck
    - [ ] Change `make check` to call pre-commit commands?
          Could be a good way to prevent drift...
-   - [ ] Compare/test between Pyre and Pyright
    - [ ] Add hadolint
 - `make clean`
    - [x] Clean up old Docker containers and buildx builders
@@ -101,9 +99,6 @@
 ### Pre-commit Hooks
 
 - [x] Ruff (check + format)
-- [ ] ~~Pyre~~
-   - ~~There are some recent fixes to the pre-commit-hooks,
-     but there has not been a release yet that includes them~~
 - [x] Trivy fs
 - [x] uv lock
 - [x] yamllint
