@@ -120,7 +120,7 @@ run_docker_check "Dockerfile Lint (Hadolint) - \"docker/Dockerfile-test\"" \
     "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile-test"
 
 run_docker_check "Markdown Lint" \
-    "docker run --rm -i -v ./:/data markdownlint/markdownlint ./ .github/ docs/"
+    "docker run --rm -i --platform linux/amd64 -v ./:/data markdownlint/markdownlint ./ .github/ docs/"
 
 run_check "ShellCheck Lint" \
     "shellcheck -x \"${REPO_DIR}\"/scripts/*.sh"
