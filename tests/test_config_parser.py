@@ -40,7 +40,7 @@ def test_eval_ast_invalid_operator(expr: str, error_msg: str) -> None:
 
 
 def test_eval_ast_invalid_expression_type() -> None:
-    with pytest.raises(ValueError, match="Unsupported expression"):
+    with pytest.raises(TypeError, match="Unsupported expression"):
         eval_ast("[1, 2, 3]")
 
 

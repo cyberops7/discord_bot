@@ -169,6 +169,58 @@ invoke scan               # Vulnerability scan with Trivy
 invoke clean              # Clean up Docker resources
 ```
 
+## Markdown Formatting Requirements
+
+This project enforces strict markdown linting via markdownlint. Configuration
+is in `.markdownlint.rb`.
+
+### Key Rules
+
+**Line Length (MD013)**:
+
+- Maximum 80 characters per line
+- Exception: Code blocks and tables are ignored
+- Wrap long lines by breaking at logical points
+
+**List Indentation (MD007)**:
+
+- Nested lists use **3-space indentation** (not 2 or 4)
+- Example:
+
+   ```markdown
+   - Parent item
+      - Nested item (3 spaces)
+      - Another nested item (3 spaces)
+   ```
+
+**Ordered Lists (MD029)**:
+
+- Use sequential numbering (1., 2., 3., etc.)
+- Do not use all 1. for every item
+- Configuration: `:ordered` style
+
+**Blank Lines Around Lists (MD032)**:
+
+- Always include blank line before a list
+- Always include blank line after a list
+
+**Consistent Indentation (MD005)**:
+
+- All items at the same nesting level must use identical indentation
+- Mixing 2-space and 3-space indentation in the same document will fail
+
+### Testing Markdown Changes
+
+Before committing markdown changes:
+
+```shell
+# Run markdownlint via Docker (same as pre-commit)
+docker run --rm -i -v ./:/data markdownlint/markdownlint ./ .github/
+
+# Or run via invoke check
+uv run invoke check
+```
+
 ## Architecture
 
 ### Application Entry Point

@@ -92,6 +92,8 @@ def eval_ast(expr: str) -> int | float:
             expr, mode="eval"
         ).body  # Get the body of the parsed `Expression` node
         return _eval(parsed_expr)
+    except (TypeError, ValueError):
+        raise
     except Exception as e:
         msg = f"Failed to evaluate expression '{expr}': {e}"
         raise ValueError(msg) from e
