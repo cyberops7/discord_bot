@@ -44,7 +44,7 @@ USER appuser
 RUN uv sync --frozen --no-cache --no-default-groups
 
 # Run the bot
-CMD ["uv", "run", "--no-default-groups", "main.py"]
+CMD ["uv", "run", "--frozen", "--no-default-groups", "main.py"]
 
 # Placeholder healthcheck until a real one is ready
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

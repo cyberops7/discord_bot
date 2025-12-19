@@ -47,8 +47,8 @@ WORKDIR $APP_HOME
 # Switch to non-root user
 USER appuser
 
-# Create the venv and install both runtime and dev dependencies
-RUN uv sync --frozen --no-cache --no-group dev && \
+# Create the venv and install both runtime and test dependencies
+RUN uv sync --frozen --no-cache --no-default-groups --group test && \
     rm $APP_HOME/pyproject.toml $APP_HOME/uv.lock
 
 # Run the tests
