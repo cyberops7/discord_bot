@@ -235,6 +235,143 @@ class TestInitializeSeenVideos:
             parser = YoutubeFeedParser(mock_feed_name, mock_feed_url)
             assert len(parser.seen_videos) == 0
 
+    def test_handle_feed_fetch_error_should_retry(self) -> None:
+        """Test error handler returns True when retries remain"""
+        with patch("lib.youtube.time.sleep") as mock_sleep:
+            should_retry = YoutubeFeedParser._handle_feed_fetch_error(
+                "Network error", attempt=0, max_retries=3, retry_delay=1
+            )
+
+            assert should_retry is True
+            mock_sleep.assert_called_once_with(1)
+
+    def test_handle_feed_fetch_error_retries_exhausted(self) -> None:
+        """Test error handler returns False when retries exhausted"""
+        with patch("lib.youtube.time.sleep") as mock_sleep:
+            should_retry = YoutubeFeedParser._handle_feed_fetch_error(
+                "Network error", attempt=2, max_retries=3, retry_delay=4
+            )
+
+            assert should_retry is False
+            mock_sleep.assert_not_called()
+
+    def test_initialize_exponential_backoff(
+        self, mock_feed_name: str, mock_feed_url: str
+    ) -> None:
+        """Test exponential backoff: 1s → 2s delays (max 3 attempts, 2 retries)"""
+        with (
+            patch(
+                "feedparser.parse",
+                side_effect=urllib.error.URLError("Network error"),
+            ),
+            patch("lib.youtube.time.sleep") as mock_sleep,
+        ):
+            _ = YoutubeFeedParser(mock_feed_name, mock_feed_url)
+
+            # Only 2 sleeps: attempt 0 and 1 retry, attempt 2 is final (no sleep)
+            assert mock_sleep.call_count == 2
+            calls = [call.args[0] for call in mock_sleep.call_args_list]
+            assert calls == [1, 2]
+
+    def test_initialize_succeeds_on_second_attempt(
+        self, mock_feed_name: str, mock_feed_url: str, mock_feed_with_entries: MagicMock
+    ) -> None:
+        """Test successful initialization after one retry"""
+        with (
+            patch(
+                "feedparser.parse",
+                side_effect=[
+                    urllib.error.URLError("Transient error"),
+                    mock_feed_with_entries,
+                ],
+            ),
+            patch("lib.youtube.time.sleep") as mock_sleep,
+        ):
+            parser = YoutubeFeedParser(mock_feed_name, mock_feed_url)
+
+            mock_sleep.assert_called_once_with(1)
+            assert len(parser.seen_videos) == 1
+            assert mock_feed_with_entries.entries[0].id in parser.seen_videos
+
+    @pytest.mark.parametrize(
+        "exception",
+        [
+            urllib.error.URLError("Network"),
+            urllib.error.HTTPError("url", 500, "Error", EmailMessage(), None),
+            TimeoutError("Timeout"),
+            socket.gaierror("DNS"),
+            ConnectionResetError("Reset"),
+        ],
+    )
+    def test_initialize_retry_all_exception_types(
+        self, mock_feed_name: str, mock_feed_url: str, exception: Exception
+    ) -> None:
+        """Test retry logic for all exception types (max 3 attempts, 2 retries)"""
+        with (
+            patch("feedparser.parse", side_effect=exception),
+            patch("lib.youtube.time.sleep") as mock_sleep,
+        ):
+            _ = YoutubeFeedParser(mock_feed_name, mock_feed_url)
+            # Only 2 sleeps: attempt 0 and 1 retry, attempt 2 is final (no sleep)
+            assert mock_sleep.call_count == 2
+
+    def test_initialize_bozo_feed_retries(
+        self, mock_feed_name: str, mock_feed_url: str
+    ) -> None:
+        """Test bozo feed with no entries triggers retry (max 3 attempts, 2 retries)"""
+        bozo_feed = MagicMock()
+        bozo_feed.bozo = True
+        bozo_feed.entries = []
+        bozo_feed.bozo_exception = Exception("Parse error")
+
+        with (
+            patch("feedparser.parse", return_value=bozo_feed),
+            patch("lib.youtube.time.sleep") as mock_sleep,
+        ):
+            parser = YoutubeFeedParser(mock_feed_name, mock_feed_url)
+
+            # Only 2 sleeps: attempt 0 and 1 retry, attempt 2 is final (no sleep)
+            assert mock_sleep.call_count == 2
+            assert len(parser.seen_videos) == 0
+
+    def test_initialize_bozo_feed_with_entries_no_retry(
+        self, mock_feed_name: str, mock_feed_url: str, mock_feed_with_entries: MagicMock
+    ) -> None:
+        """Test bozo feed WITH entries does NOT retry"""
+        mock_feed_with_entries.bozo = True
+        mock_feed_with_entries.bozo_exception = Exception("Minor issue")
+
+        with (
+            patch("feedparser.parse", return_value=mock_feed_with_entries),
+            patch("lib.youtube.time.sleep") as mock_sleep,
+        ):
+            parser = YoutubeFeedParser(mock_feed_name, mock_feed_url)
+
+            mock_sleep.assert_not_called()
+            assert len(parser.seen_videos) == 1
+
+    def test_initialize_succeeds_on_third_attempt(
+        self, mock_feed_name: str, mock_feed_url: str, mock_feed_with_entries: MagicMock
+    ) -> None:
+        """Test successful initialization after two retries"""
+        with (
+            patch(
+                "feedparser.parse",
+                side_effect=[
+                    TimeoutError("First timeout"),
+                    socket.gaierror("DNS error"),
+                    mock_feed_with_entries,
+                ],
+            ),
+            patch("lib.youtube.time.sleep") as mock_sleep,
+        ):
+            parser = YoutubeFeedParser(mock_feed_name, mock_feed_url)
+
+            assert mock_sleep.call_count == 2
+            calls = [call.args[0] for call in mock_sleep.call_args_list]
+            assert calls == [1, 2]
+            assert len(parser.seen_videos) == 1
+
 
 class TestGetLatestVideo:
     """Tests for get_latest_video method"""
