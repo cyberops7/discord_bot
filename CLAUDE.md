@@ -331,6 +331,8 @@ All PRs must pass:
     effects
 12. **Code formatting**: Always run `uv run ruff format` before running checks
     or committing code
+13. **Type checking before commits**: Always run `uv run pyrefly check` before
+    creating commits to catch type errors early
 
 ## Configuration System
 
