@@ -1,11 +1,10 @@
 [project]
 name = "discord_bot"
-version = "0.6.3"
+version = "0.9.0"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "click<8.2", # 8.2+ breaks pyre-check
     "colorlog>=6.10.1",
     "discord>=2.3.2",
     "dotenv>=0.9.9",
@@ -20,7 +19,7 @@ dev = [
     "bandit>=1.9.1",
     "invoke>=2.2.1",
     "pre-commit>=4.4.0",
-    "pyre-check>=0.9.23",
+    "pyrefly>=0.45.2",
     "ruff>=0.14.5",
     "shellcheck-py>=0.11.0.1",
     "yamllint>=1.35.1",
@@ -43,17 +42,12 @@ skips = [
     "B104",
 ]
 
-# Note - Pyre does not yet consume this.  A recent commit enables it, but there has not been a fresh build of Pyre yet:
-# See https://github.com/facebook/pyre-check/issues/695
-#[tool.pyre]
-#ignore_all_errors = [".venv"]
-#site_package_search_strategy="pep561"
-#source_directories = [".", ".venv", ".venv/lib/python3.13"]
-#strict = true
-
 [tool.pyrefly]
-project-includes = ["**/*"]
-project-excludes = ["**/*venv/**/*"]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
+search-path = ["stubs"]
 
 [tool.pytest]
 addopts = [
@@ -116,7 +110,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 [tool.ruff.lint.per-file-ignores]
 "lib/config.py" = [
     "ANN401",   # Allow dynamically typed expressions
-    "ERA001"    # False positive commented out code (pyre annotations)
+    "ERA001"    # False positive commented out code
 ]
 "tests/*.py" = [
     "PLR0913",  # Arg count in function def

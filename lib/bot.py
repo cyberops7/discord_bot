@@ -5,15 +5,15 @@ import importlib
 import logging
 import time
 from dataclasses import field
-from datetime import datetime, tzinfo  # noqa: F401 RUF100 - used in cast() as string
+from datetime import datetime
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import discord
 from discord.ext import commands
 
 from lib.bot_log_context import EmbedFieldDict, LogContext
-from lib.config import Any, config
+from lib.config import config
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class DiscordBot(commands.Bot):
         self,
         command_prefix: str,
         intents: discord.Intents,
-        **options: Any,
+        **options: Any,  # noqa: ANN401 - Required for passing kwargs to parent class
     ) -> None:
         super().__init__(command_prefix=command_prefix, intents=intents, **options)
         self._initial_startup_complete: bool = False
@@ -234,7 +234,7 @@ class DiscordBot(commands.Bot):
             title=context.action or f"{context.level} Log",
             description=context.log_message,
             color=context.color,
-            timestamp=datetime.now(tz=cast("tzinfo", config.TIMEZONE)),
+            timestamp=datetime.now(config.TIMEZONE),
         )
 
         if context.user:
@@ -278,9 +278,7 @@ class DiscordBot(commands.Bot):
     @staticmethod
     async def _send_log_text(context: LogContext) -> discord.Message:
         """Send log as a formatted text message"""
-        timestamp = datetime.now(cast("tzinfo", config.TIMEZONE)).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        timestamp = datetime.now(config.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
         log_parts = [f"[{timestamp}] [{context.level}]"]
 
@@ -352,6 +350,7 @@ class DiscordBot(commands.Bot):
         level: str = "INFO",
         details: str = "",
         log_channel: discord.TextChannel | None = None,
+        extra_embed_fields: list[EmbedFieldDict] | None = None,
     ) -> discord.Message | None:
         """Log a bot-related event"""
         try:
@@ -360,6 +359,7 @@ class DiscordBot(commands.Bot):
                 level=level,
                 action="Bot Event",
                 embed=True,
+                extra_embed_fields=extra_embed_fields or [],
             )
         except (AttributeError, ValueError) as e:
             logger.warning("Error creating log context: %s", e)

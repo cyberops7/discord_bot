@@ -99,9 +99,21 @@ class Tasks(commands.Cog):
                 )
 
             logger.info("Cleaned %s members.", len(kick_list))
+
+            # Format kicked users for embed display
+            kicked_users_formatted = self._format_kicked_users_list(kick_list)
+
+            # Log bot event with kicked users details
             await self.bot.log_bot_event(
                 event="Task - 🧹 Member Cleanup",
                 details=f"Cleaned {len(kick_list)} members.",
+                extra_embed_fields=[
+                    {
+                        "name": "Kicked Users",
+                        "value": kicked_users_formatted,
+                        "inline": False,
+                    }
+                ],
             )
 
     @tasks.loop(minutes=5)
@@ -129,9 +141,21 @@ class Tasks(commands.Cog):
             )
 
         logger.info("DRY_RUN: Would have cleaned %s members.", len(kick_list))
+
+        # Format kicked users for embed display
+        kicked_users_formatted = self._format_kicked_users_list(kick_list)
+
+        # Log bot event with kicked users details
         await self.bot.log_bot_event(
             event="Task - 🧹 Member Cleanup (DRY_RUN)",
             details=f"Would have cleaned {len(kick_list)} members.",
+            extra_embed_fields=[
+                {
+                    "name": "Kicked Users (DRY_RUN)",
+                    "value": kicked_users_formatted,
+                    "inline": False,
+                }
+            ],
         )
 
     async def _get_channel_members_to_kick(self) -> set[discord.Member]:
@@ -164,6 +188,66 @@ class Tasks(commands.Cog):
                 kick_list.add(member)
 
         return kick_list
+
+    @staticmethod
+    def _format_kicked_users_list(members: set[discord.Member]) -> str:
+        """
+        Format a list of kicked members for display in Discord embed.
+
+        Uses efficient single-pass truncation: tracks length during iteration
+        and stops when adding the next line would exceed the 1024-char limit.
+
+        Args:
+            members: Set of Discord members who were/will be kicked
+
+        Returns:
+            Formatted string with a bullet list of members, or "None" if empty.
+            The max length is 1024 characters (Discord field value limit).
+        """
+        if not members:
+            return "None"
+
+        # Sort by join date (oldest first), handle None joined_at by putting
+        # them at the end
+        sorted_members = sorted(
+            members,
+            key=lambda m: (
+                m.joined_at
+                if m.joined_at
+                else datetime.datetime.max.replace(tzinfo=datetime.UTC)
+            ),
+        )
+
+        # Build the result string directly, checking length as we go
+        # (efficient single-pass)
+        result = ""
+        for i, member in enumerate(sorted_members):
+            joined_date = (
+                member.joined_at.strftime("%Y-%m-%d") if member.joined_at else "Unknown"
+            )
+            line = f"• {member.display_name} ({member}) - Joined: {joined_date}"
+
+            # Calculate what the result would be if we add this line
+            separator = "\n" if result else ""
+            test_result = result + separator + line
+
+            # If adding this line exceeds the limit, stop and add truncation
+            if len(test_result) > config.EMBED_MAX_LENGTH:
+                remaining_count = len(sorted_members) - i
+                truncation = f"...and {remaining_count} more"
+
+                # Try to add the truncation message
+                with_truncation = result + separator + truncation
+                if len(with_truncation) <= config.EMBED_MAX_LENGTH:
+                    return with_truncation
+                # Truncation doesn't fit, return what we have
+                return result if result else "None"
+
+            # This line fits, add it to the result
+            result = test_result
+
+        # All lines fit
+        return result
 
     @clean_channel_members_task.before_loop
     @clean_channel_members_task_dry_run.before_loop

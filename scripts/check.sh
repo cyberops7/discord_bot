@@ -43,6 +43,15 @@ fi
 
 source .venv/bin/activate
 
+# Check if Docker is running
+is_docker_running() {
+    if docker info >/dev/null 2>&1; then
+        return 0  # Docker is running
+    else
+        return 1  # Docker is not running
+    fi
+}
+
 # Generic Function for Running Checks
 run_check() {
     local name="$1"        # Human-Friendly Name of the Check
@@ -70,6 +79,21 @@ run_check() {
     fi
 }
 
+# Function for Running Docker-Dependent Checks
+run_docker_check() {
+    local name="$1"        # Human-Friendly Name of the Check
+    local command="$2"     # Command to Run the Check
+    local fix_mode="$3"    # Command to Run in Fix Mode (optional)
+
+    if ! is_docker_running; then
+        divider
+        warning "Skipping: $name (Docker is not running)"
+        return 0
+    fi
+
+    run_check "$name" "$command" "$fix_mode"
+}
+
 # Run All Checks
 run_check "Ruff Format" \
     "uv run ruff format --check \"$REPO_DIR\"" \
@@ -82,21 +106,21 @@ run_check "Ruff Lint" \
 run_check "Bandit Security Lint" \
     "uv run bandit -c pyproject.toml -r ./"
 
-run_check "Pyre Type Check" \
-    "pyre check"
+run_check "Pyrefly Type Check" \
+    "uv run pyrefly check"
 
 # Uncomment the following block for Pyright checks if needed
 # run_check "Pyright Type Check" \
 #    "pyright"
 
-run_check "Dockerfile Lint (Hadolint) - \/docker/Dockerfile\"" \
+run_docker_check "Dockerfile Lint (Hadolint) - \/docker/Dockerfile\"" \
     "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile"
 
-run_check "Dockerfile Lint (Hadolint) - \"docker/Dockerfile-test\"" \
+run_docker_check "Dockerfile Lint (Hadolint) - \"docker/Dockerfile-test\"" \
     "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile-test"
 
-run_check "Markdown Lint" \
-    "docker run --rm -i -v ./:/data markdownlint/markdownlint ./ .github/"
+run_docker_check "Markdown Lint" \
+    "docker run --rm -i --platform linux/amd64 -v ./:/data markdownlint/markdownlint ./ .github/ docs/"
 
 run_check "ShellCheck Lint" \
     "shellcheck -x \"${REPO_DIR}\"/scripts/*.sh"

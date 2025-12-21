@@ -20,11 +20,11 @@ logger: logging.Logger = logging.getLogger(__name__)
 class AppState(StarletteState):
     """Custom state object for FastAPI.  This is needed to keep type checkers happy."""
 
-    bot: DiscordBot
+    bot: DiscordBot | None
 
     def __init__(self, bot: DiscordBot | None) -> None:
         super().__init__()
-        self.bot: DiscordBot | None = bot
+        self.bot = bot
 
 
 @asynccontextmanager
@@ -65,7 +65,7 @@ async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
         logger.info("Discord bot closed.")
 
 
-# pyre-ignore[6]: FastAPI expects AbstractAsyncContextManager,
+# pyrefly: ignore[bad-argument-type]: FastAPI expects AbstractAsyncContextManager,
 # but we are using the asynccontextmanager decorator (per FastAPI docs)
 app: FastAPI = FastAPI(lifespan=lifespan)  # Create the FastAPI app
 

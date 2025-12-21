@@ -664,9 +664,9 @@ class TestJSONFormatter:
             exc_info=None,
         )
         # Add extra fields
-        record.user_id = "12345"  # pyre-ignore[16]
-        record.request_id = "req-abc-123"  # pyre-ignore[16]
-        record.custom_field = {"nested": "value"}  # pyre-ignore[16]
+        record.user_id = "12345"  # pyrefly: ignore[missing-attribute]
+        record.request_id = "req-abc-123"  # pyrefly: ignore[missing-attribute]
+        record.custom_field = {"nested": "value"}  # pyrefly: ignore[missing-attribute]
 
         result = formatter.format(record)
         data = json.loads(result)
@@ -725,7 +725,7 @@ class TestJSONFormatter:
             exc_info=None,
         )
         # Add a custom attribute
-        record.custom_attr = "custom_value"  # pyre-ignore[16]
+        record.custom_attr = "custom_value"  # pyrefly: ignore[missing-attribute]
 
         result = formatter.prepare_log_dict(record)
 
@@ -753,7 +753,7 @@ class TestJSONFormatter:
                 return "custom_object_str"
 
         custom_obj = CustomObject()
-        record.custom_obj = custom_obj  # pyre-ignore[16]
+        record.custom_obj = custom_obj  # pyrefly: ignore[missing-attribute]
 
         result = formatter.prepare_log_dict(record)
 

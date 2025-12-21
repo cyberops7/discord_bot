@@ -4,7 +4,6 @@ __pycache__/
 .idea/
 .mypy_cache
 .pre-commit-trivy-cache/
-.pyre/
 .ruff_cache/
 .tmp/
 .venv/
@@ -23,7 +22,6 @@ tests/
 .markdownlint.rb
 .mdlrc
 .pre-commit-config.yaml
-.pyre_configuration
 .shellcheckrc
 .watchmanconfig
 .yamllint.yaml

@@ -57,7 +57,10 @@ class TestBasicCommands:
     ) -> None:
         """Test the hello command responds correctly"""
         with caplog.at_level(logging.INFO):
-            await basic_commands_cog.hello.callback(basic_commands_cog, mock_context)  # type: ignore[misc]
+            await basic_commands_cog.hello.callback(
+                basic_commands_cog,  # pyrefly: ignore[bad-argument-type]
+                mock_context,  # pyrefly: ignore[bad-argument-count]
+            )
 
         mock_context.send.assert_called_once_with("Hello")
         assert len(caplog.records) == 1
@@ -75,7 +78,10 @@ class TestBasicCommands:
     ) -> None:
         """Test the ping command responds correctly"""
         with caplog.at_level(logging.INFO):
-            await basic_commands_cog.ping.callback(basic_commands_cog, mock_context)  # type: ignore[misc]
+            await basic_commands_cog.ping.callback(
+                basic_commands_cog,  # pyrefly: ignore[bad-argument-type]
+                mock_context,  # pyrefly: ignore[bad-argument-count]
+            )
 
         mock_context.send.assert_called_once_with("Pong")
         assert len(caplog.records) == 1
@@ -94,7 +100,8 @@ class TestBasicCommands:
         """Test the slash hello command responds correctly"""
         with caplog.at_level(logging.INFO):
             await basic_commands_cog.slash_hello.callback(
-                basic_commands_cog, mock_interaction
+                basic_commands_cog,  # pyrefly: ignore[bad-argument-type]
+                mock_interaction,  # pyrefly: ignore[bad-argument-count]
             )
 
         mock_interaction.response.send_message.assert_called_once_with("Hello world.")
@@ -164,7 +171,8 @@ class TestBasicCommands:
             caplog.at_level(logging.INFO),
         ):
             await basic_commands_cog.slash_ping.callback(
-                basic_commands_cog, mock_interaction
+                basic_commands_cog,  # pyrefly: ignore[bad-argument-type]
+                mock_interaction,  # pyrefly: ignore[bad-argument-count]
             )
 
         # Verify an initial response was sent with an embed
@@ -237,7 +245,8 @@ class TestBasicCommands:
             caplog.at_level(logging.INFO),
         ):
             await basic_commands_cog.slash_ping.callback(
-                basic_commands_cog, mock_interaction
+                basic_commands_cog,  # pyrefly: ignore[bad-argument-type]
+                mock_interaction,  # pyrefly: ignore[bad-argument-count]
             )
 
         # Verify responses were called
@@ -275,7 +284,8 @@ class TestBasicCommands:
             caplog.at_level(logging.WARNING),
         ):
             await basic_commands_cog.slash_ping.callback(
-                basic_commands_cog, mock_interaction
+                basic_commands_cog,  # pyrefly: ignore[bad-argument-type]
+                mock_interaction,  # pyrefly: ignore[bad-argument-count]
             )
 
         # Verify an initial response was sent
