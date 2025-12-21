@@ -350,6 +350,7 @@ class DiscordBot(commands.Bot):
         level: str = "INFO",
         details: str = "",
         log_channel: discord.TextChannel | None = None,
+        extra_embed_fields: list[EmbedFieldDict] | None = None,
     ) -> discord.Message | None:
         """Log a bot-related event"""
         try:
@@ -358,6 +359,7 @@ class DiscordBot(commands.Bot):
                 level=level,
                 action="Bot Event",
                 embed=True,
+                extra_embed_fields=extra_embed_fields or [],
             )
         except (AttributeError, ValueError) as e:
             logger.warning("Error creating log context: %s", e)

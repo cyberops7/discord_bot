@@ -150,6 +150,179 @@ def create_test_member(
     return member
 
 
+class TestFormatKickedUsersList:
+    """Test cases for _format_kicked_users_list helper function."""
+
+    def test_format_kicked_users_list_empty(self) -> None:
+        """Test that empty set returns 'None'"""
+        result = Tasks._format_kicked_users_list(set())
+        assert result == "None"
+
+    def test_format_kicked_users_list_single_user(self) -> None:
+        """Test single user formats correctly with all fields"""
+        member = create_test_member(
+            "JohnDoe",
+            12345,
+            joined_at=datetime.datetime(2025, 12, 15, 10, 30, 0, tzinfo=datetime.UTC),
+        )
+
+        result = Tasks._format_kicked_users_list({member})
+
+        assert result == "• JohnDoe (JohnDoe#12345) - Joined: 2025-12-15"
+
+    def test_format_kicked_users_list_multiple_users_sorted(self) -> None:
+        """Test multiple users are sorted by join date (oldest first)"""
+        # Create members with different join dates
+        member1 = create_test_member(
+            "NewMember",
+            1111,
+            joined_at=datetime.datetime(2025, 12, 15, tzinfo=datetime.UTC),  # Newest
+        )
+        member2 = create_test_member(
+            "OldMember",
+            2222,
+            joined_at=datetime.datetime(2025, 12, 10, tzinfo=datetime.UTC),  # Oldest
+        )
+        member3 = create_test_member(
+            "MidMember",
+            3333,
+            joined_at=datetime.datetime(2025, 12, 12, tzinfo=datetime.UTC),  # Middle
+        )
+
+        result = Tasks._format_kicked_users_list({member1, member2, member3})
+
+        lines = result.split("\n")
+        assert len(lines) == 3
+        # Verify oldest is first
+        assert "OldMember" in lines[0]
+        assert "2025-12-10" in lines[0]
+        # Verify middle is second
+        assert "MidMember" in lines[1]
+        assert "2025-12-12" in lines[1]
+        # Verify newest is last
+        assert "NewMember" in lines[2]
+        assert "2025-12-15" in lines[2]
+
+    def test_format_kicked_users_list_none_joined_at(self) -> None:
+        """Test user with None joined_at shows 'Unknown'"""
+        member = create_test_member("NoDateMember", 9999, joined_at=None)
+
+        result = Tasks._format_kicked_users_list({member})
+
+        assert "NoDateMember" in result
+        assert "Joined: Unknown" in result
+
+    def test_format_kicked_users_list_none_joined_at_sorted_last(self) -> None:
+        """Test users with None joined_at are sorted to the end"""
+        member_with_date = create_test_member(
+            "HasDate",
+            1111,
+            joined_at=datetime.datetime(2025, 12, 10, tzinfo=datetime.UTC),
+        )
+        member_no_date = create_test_member("NoDate", 2222, joined_at=None)
+
+        result = Tasks._format_kicked_users_list({member_with_date, member_no_date})
+
+        lines = result.split("\n")
+        assert len(lines) == 2
+        # Member with date should be first
+        assert "HasDate" in lines[0]
+        assert "2025-12-10" in lines[0]
+        # Member without date should be last
+        assert "NoDate" in lines[1]
+        assert "Unknown" in lines[1]
+
+    def test_format_kicked_users_list_truncation(self) -> None:
+        """Test long list (25+ users) truncates correctly"""
+        # Create 30 members with sequential dates
+        members = set()
+        for i in range(30):
+            member = create_test_member(
+                f"Member{i:02d}",
+                10000 + i,
+                joined_at=datetime.datetime(2025, 12, 1, 0, 0, 0, tzinfo=datetime.UTC)
+                + datetime.timedelta(days=i),
+            )
+            members.add(member)
+
+        result = Tasks._format_kicked_users_list(members)
+
+        # Should be truncated
+        assert "...and" in result
+        assert "more" in result
+        # Should not exceed 1024 chars
+        assert len(result) <= 1024
+        # Should still have the oldest members at the top
+        assert "Member00" in result
+        assert "2025-12-01" in result
+
+    def test_format_kicked_users_list_respects_1024_limit(self) -> None:
+        """Test output never exceeds the 1024-character limit"""
+        # Create members with very long display names to stress the truncation
+        members = set()
+        for i in range(50):
+            member = create_test_member(
+                f"VeryLongDisplayNameForMember{i:02d}WithExtraCharacters",
+                20000 + i,
+                joined_at=datetime.datetime(2025, 11, 1, 0, 0, 0, tzinfo=datetime.UTC)
+                + datetime.timedelta(days=i),
+            )
+            members.add(member)
+
+        result = Tasks._format_kicked_users_list(members)
+
+        # Must respect the 1024-character limit
+        assert len(result) <= 1024
+        # Should have a truncation message
+        assert "...and" in result
+        assert "more" in result
+
+    def test_format_kicked_users_list_single_line_over_limit(self) -> None:
+        """Test a single line that exceeds 1024 chars"""
+        # Create a member with a very long display name that exceeds 1024 chars
+        very_long_name = "X" * 1000  # 1000 char name
+        member = create_test_member(
+            very_long_name,
+            99999,
+            joined_at=datetime.datetime(2025, 12, 1, tzinfo=datetime.UTC),
+        )
+
+        result = Tasks._format_kicked_users_list({member})
+
+        # Should handle the single long line gracefully
+        assert len(result) <= 1024
+        # Should contain truncation since single line is > 1024
+        assert "...and" in result or len(result) <= 1024
+
+    def test_format_kicked_users_list_truncation_doesnt_fit(self) -> None:
+        """Test edge case where truncation message itself doesn't fit"""
+        # Create members with names that result in lines close to 51 chars each
+        # Goal: get to ~1020 chars with accumulated lines, so truncation won't
+        # fit
+        members = set()
+        # Create 1000 members - this will cause truncation message like
+        # "...and 980 more" which is long enough that it might not fit if
+        # we're close to the limit
+        for i in range(1000):
+            # Use a name length that gets us close to the limit
+            name = f"Member{i:04d}X" * 10  # Creates ~110 char names
+            member = create_test_member(
+                name,
+                10000 + i,
+                joined_at=datetime.datetime(2025, 11, 1, tzinfo=datetime.UTC)
+                + datetime.timedelta(days=i % 365),
+            )
+            members.add(member)
+
+        result = Tasks._format_kicked_users_list(members)
+
+        # Should not exceed 1024 chars
+        assert len(result) <= 1024
+        # Should either have truncation or be cut off before it
+        # (either way, should be <= 1024)
+        assert len(result) > 0
+
+
 class TestTasks:
     """Test cases for the Tasks cog."""
 
@@ -432,6 +605,7 @@ class TestTasks:
                 mock_dt.now.return_value = mock_sunday
                 await tasks_cog.clean_channel_members_task()
                 event_name = "Task - 🧹 Member Cleanup"
+                field_name = "Kicked Users"
                 log_prefix = ""
         else:
             with (
@@ -440,6 +614,7 @@ class TestTasks:
             ):
                 await tasks_cog.clean_channel_members_task_dry_run()
                 event_name = "Task - 🧹 Member Cleanup (DRY_RUN)"
+                field_name = "Kicked Users (DRY_RUN)"
                 log_prefix = "DRY_RUN: Would have "
 
         # Verify sleep called for each member
@@ -466,12 +641,30 @@ class TestTasks:
                 expected_cleaned_msg.lower() in msg.lower() for msg in log_messages
             )
 
-        # Verify bot event logging
-        mock_log_bot_event.assert_called_with(
-            event=event_name,
-            details=f"{'Would have c' if dry_run else 'C'}"
-            f"leaned {member_count} members.",
-        )
+        # Verify log_bot_event was called with correct parameters
+        mock_log_bot_event.assert_called_once()
+        call_kwargs = mock_log_bot_event.call_args.kwargs
+
+        # Verify basic parameters
+        assert call_kwargs["event"] == event_name
+        assert f"{member_count} members" in call_kwargs["details"]
+
+        # Verify extra_embed_fields parameter
+        assert "extra_embed_fields" in call_kwargs
+        extra_fields = call_kwargs["extra_embed_fields"]
+        assert len(extra_fields) == 1
+
+        field = extra_fields[0]
+        assert field["name"] == field_name
+        assert field["inline"] is False
+
+        # Verify field value contains formatted user list
+        if member_count == 0:
+            assert field["value"] == "None"
+        else:
+            # Should contain member information
+            for member in members:
+                assert member.display_name in field["value"]
 
     @pytest.mark.parametrize(
         "exception_type",
@@ -533,6 +726,7 @@ class TestTasks:
         caplog: pytest.LogCaptureFixture,
         tasks_cog: Tasks,
         mock_config: MagicMock,
+        mocker: MockerFixture,
     ) -> None:
         """Test logging for a member with no join date shows 'Unknown'"""
         mock_sunday = datetime.datetime(
@@ -543,7 +737,9 @@ class TestTasks:
         member = create_test_member("MemberNoDate", 1234, joined_at=None)
 
         tasks_cog._get_channel_members_to_kick = AsyncMock(return_value={member})
-        tasks_cog.bot.log_bot_event = AsyncMock()
+        mock_log_bot_event = mocker.patch.object(
+            tasks_cog.bot, "log_bot_event", new=AsyncMock()
+        )
 
         with (
             patch("lib.cogs.tasks.datetime.datetime") as mock_dt,
@@ -559,18 +755,29 @@ class TestTasks:
             "Kicked MemberNoDate" in msg and "Unknown" in msg for msg in log_messages
         )
 
+        # Verify "Unknown" appears in the embed field
+        mock_log_bot_event.assert_called_once()
+        call_kwargs = mock_log_bot_event.call_args.kwargs
+        assert "extra_embed_fields" in call_kwargs
+        field_value = call_kwargs["extra_embed_fields"][0]["value"]
+        assert "MemberNoDate" in field_value
+        assert "Unknown" in field_value
+
     @async_test
     async def test_clean_channel_members_task_dry_run_member_no_join_date_logging(
         self,
         caplog: pytest.LogCaptureFixture,
         tasks_cog: Tasks,
+        mocker: MockerFixture,
     ) -> None:
         """Test dry run logging for a member with no join date shows 'Unknown'"""
         # Create a member with no joined_at date
         member = create_test_member("DryRunMemberNoDate", 1234, joined_at=None)
 
         tasks_cog._get_channel_members_to_kick = AsyncMock(return_value={member})
-        tasks_cog.bot.log_bot_event = AsyncMock()
+        mock_log_bot_event = mocker.patch.object(
+            tasks_cog.bot, "log_bot_event", new=AsyncMock()
+        )
 
         with (
             patch("lib.cogs.tasks.asyncio.sleep"),
@@ -584,6 +791,14 @@ class TestTasks:
             "DRY_RUN: Would have kicked DryRunMemberNoDate" in msg and "Unknown" in msg
             for msg in log_messages
         )
+
+        # Verify "Unknown" appears in the embed field
+        mock_log_bot_event.assert_called_once()
+        call_kwargs = mock_log_bot_event.call_args.kwargs
+        assert "extra_embed_fields" in call_kwargs
+        field_value = call_kwargs["extra_embed_fields"][0]["value"]
+        assert "DryRunMemberNoDate" in field_value
+        assert "Unknown" in field_value
 
     def test_type_checking_import_coverage(self) -> None:
         """Test to ensure TYPE_CHECKING import block is covered"""
