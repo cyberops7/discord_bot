@@ -151,10 +151,10 @@ def create_test_member(
 
 
 class TestFormatKickedUsersList:
-    """Test cases for _format_kicked_users_list helper function."""
+    """Test cases for the _format_kicked_users_list helper function."""
 
     def test_format_kicked_users_list_empty(self) -> None:
-        """Test that empty set returns 'None'"""
+        """Test that an empty set returns 'None'"""
         result = Tasks._format_kicked_users_list(set())
         assert result == "None"
 
@@ -228,12 +228,12 @@ class TestFormatKickedUsersList:
         # Member with date should be first
         assert "HasDate" in lines[0]
         assert "2025-12-10" in lines[0]
-        # Member without date should be last
+        # Member without a date should be last
         assert "NoDate" in lines[1]
         assert "Unknown" in lines[1]
 
     def test_format_kicked_users_list_truncation(self) -> None:
-        """Test long list (25+ users) truncates correctly"""
+        """Test a long list (25+ users) truncates correctly"""
         # Create 30 members with sequential dates
         members = set()
         for i in range(30):
@@ -291,16 +291,16 @@ class TestFormatKickedUsersList:
 
         # Should handle the single long line gracefully
         assert len(result) <= 1024
-        # Should contain truncation since single line is > 1024
+        # Should contain truncation since a single line is > 1024
         assert "...and" in result or len(result) <= 1024
 
     def test_format_kicked_users_list_truncation_doesnt_fit(self) -> None:
-        """Test edge case where truncation message itself doesn't fit"""
+        """Test edge case where a truncation message itself doesn't fit"""
         # Create members with names that result in lines close to 51 chars each
         # Goal: get to ~1020 chars with accumulated lines, so truncation won't
         # fit
         members = set()
-        # Create 1000 members - this will cause truncation message like
+        # Create 1000 members - this will cause a truncation message like
         # "...and 980 more" which is long enough that it might not fit if
         # we're close to the limit
         for i in range(1000):
@@ -641,7 +641,7 @@ class TestTasks:
                 expected_cleaned_msg.lower() in msg.lower() for msg in log_messages
             )
 
-        # Verify log_bot_event was called with correct parameters
+        # Verify log_bot_event was called with the correct parameters
         mock_log_bot_event.assert_called_once()
         call_kwargs = mock_log_bot_event.call_args.kwargs
 
@@ -658,7 +658,7 @@ class TestTasks:
         assert field["name"] == field_name
         assert field["inline"] is False
 
-        # Verify field value contains formatted user list
+        # Verify field value contains a formatted user list
         if member_count == 0:
             assert field["value"] == "None"
         else:
@@ -728,7 +728,7 @@ class TestTasks:
         mock_config: MagicMock,
         mocker: MockerFixture,
     ) -> None:
-        """Test logging for a member with no join date shows 'Unknown'"""
+        """Test that logging for a member with no join date shows 'Unknown'"""
         mock_sunday = datetime.datetime(
             2023, 1, 8, 17, 0, 0, tzinfo=mock_config.TIMEZONE
         )
@@ -900,6 +900,7 @@ class TestTasks:
             }
         )
 
+        # noinspection SpellCheckingInspection
         video2 = FeedParserDict(
             {
                 "id": "yt:video:ghijkl456",
@@ -1123,7 +1124,7 @@ class TestTasks:
         mock_feed_parser.parse_rss_feed.return_value = ["video1"]
         tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
 
-        # Mock channel as a wrong type (VoiceChannel)
+        # Mock a channel as a wrong type (VoiceChannel)
         mock_channel = MagicMock(spec=discord.VoiceChannel)
         tasks_cog.bot.get_channel = MagicMock(return_value=mock_channel)
         tasks_cog.bot.log_bot_event = AsyncMock()
