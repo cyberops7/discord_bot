@@ -4,13 +4,18 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: discordbot
-  namespace: discordbot
+  namespace: argocd
 spec:
   project: default
-  source:
-    repoURL: https://ghcr.io/cyberops7/discord_bot.git
-    targetRevision: main
-    path: kubernetes
+  sources:
+    # Remote GitHub repo (monitored for changes)
+    - repoURL: https://github.com/cyberops7/discord_bot.git
+      targetRevision: main
+      ref: remote
+    # Local repo with a kustomization file (applies patches)
+    - repoURL: https://your.k8s.repo.url.here
+      targetRevision: main
+      path: discordbot
   destination:
     server: https://kubernetes.default.svc
     namespace: discordbot
@@ -30,9 +35,3 @@ spec:
       - CreateNamespace=true
       - PrunePropagationPolicy=foreground
       - PruneLast=true
-operation:
-  initiatedBy:
-    username: admin
-  sync:
-    syncStrategy:
-      hook: {}

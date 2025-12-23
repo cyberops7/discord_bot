@@ -53,7 +53,7 @@ spec:
       containers:
         - name: bot
           # TODO @cyberops7: figure out how to ignore AVD-KSV-0125 (Trivy)
-          image: ghcr.io/cyberops7/discord_bot:v0.5.0
+          image: ghcr.io/cyberops7/discord_bot:v0.9.0
           imagePullPolicy: Always
           env:
             - name: BOT_TOKEN
@@ -65,6 +65,8 @@ spec:
               value: "DEBUG"
             - name: LOG_LEVEL_STDOUT
               value: "INFO"
+            - name: DRY_RUN_YOUTUBE
+              value: "false"
           ports:
             - name: bot-api
               containerPort: 8080
