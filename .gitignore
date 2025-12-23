@@ -9,4 +9,3 @@ htmlcov
 log
 .coverage
 .env
-kustomization.yaml
