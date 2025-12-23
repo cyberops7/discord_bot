@@ -316,7 +316,8 @@ All PRs must pass:
    should be addressed right away.
 4. **Use the logger, not print()**: Import logging and use logger throughout
 5. **Version bumping**: Every PR must increment the version in `pyproject.toml`
-   following semantic versioning
+   following semantic versioning. When updating the version in `pyproject.toml`,
+   also update the image tag in `kubernetes/discordbot.yaml` to match
 6. **Configuration**: All configuration values go in `conf/config.yaml`, access
    via the `config` singleton
 7. **Environment variables**: Use `.env` file for local development
@@ -333,6 +334,10 @@ All PRs must pass:
     or committing code
 13. **Type checking before commits**: Always run `uv run pyrefly check` before
     creating commits to catch type errors early
+14. **UV version synchronization**: Before each commit, check the currently
+    installed uv version with `uv --version` and update both
+    `.pre-commit-config.yaml` and `.github/workflows/check-test.yaml` to match
+    that version
 
 ## Configuration System
 
