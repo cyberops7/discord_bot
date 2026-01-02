@@ -8,10 +8,12 @@ metadata:
 spec:
   project: default
   sources:
-    # Remote GitHub repo (monitored for changes)
-    - repoURL: https://github.com/cyberops7/discord_bot.git
+    # Remote GitHub repo (tracked for changes)
+    - repoURL: https://github.com/cyberops7/discord_bot
       targetRevision: main
-      ref: remote
+      path: kubernetes
+      directory:
+        exclude: '{sample*,presync-image-check.yaml,kustomization.yaml}'
     # Local repo with a kustomization file (applies patches)
     - repoURL: https://your.k8s.repo.url.here
       targetRevision: main

@@ -3,6 +3,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: discordbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 
 ---
 apiVersion: onepassword.com/v1
@@ -10,6 +12,8 @@ kind: OnePasswordItem
 metadata:
   name: bot-secrets
   namespace: discordbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   itemPath: <<< REPLACE_ITEM_PATH >>>
 
@@ -19,6 +23,8 @@ apiVersion: v1
 metadata:
   name: pvc-ceph-discordbot
   namespace: discordbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
   labels:
     app: bot
 spec:
@@ -35,6 +41,8 @@ kind: Deployment
 metadata:
   name: bot
   namespace: discordbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
   labels:
     app: bot
 spec:
@@ -53,7 +61,7 @@ spec:
       containers:
         - name: bot
           # TODO @cyberops7: figure out how to ignore AVD-KSV-0125 (Trivy)
-          image: ghcr.io/cyberops7/discord_bot:v0.9.4
+          image: ghcr.io/cyberops7/discord_bot:v0.9.5
           imagePullPolicy: Always
           env:
             - name: BOT_TOKEN
@@ -137,6 +145,8 @@ kind: Service
 metadata:
   name: bot
   namespace: discordbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
   labels:
     app: bot
 spec:

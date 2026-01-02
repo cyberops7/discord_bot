@@ -590,3 +590,119 @@ class TestGetNewVideos:
         with patch("feedparser.parse", return_value=mock_feed_with_entries):
             result = youtube_parser_no_init.get_new_videos()
             assert len(result) == 0
+
+
+class TestIsInitialized:
+    """Tests for is_initialized property"""
+
+    def test_is_initialized_with_videos(
+        self, youtube_parser_no_init: YoutubeFeedParser
+    ) -> None:
+        """Test is_initialized returns True when seen_videos is not empty"""
+        youtube_parser_no_init.seen_videos = {"video1", "video2"}
+        assert youtube_parser_no_init.is_initialized is True
+
+    def test_is_initialized_empty(
+        self, youtube_parser_no_init: YoutubeFeedParser
+    ) -> None:
+        """Test is_initialized returns False when seen_videos is empty"""
+        youtube_parser_no_init.seen_videos = set()
+        assert youtube_parser_no_init.is_initialized is False
+
+    def test_is_initialized_after_failed_init(
+        self, mock_feed_name: str, mock_feed_url: str
+    ) -> None:
+        """Test is_initialized returns False after initialization fails"""
+        with patch(
+            "feedparser.parse", side_effect=urllib.error.URLError("Network error")
+        ):
+            parser = YoutubeFeedParser(mock_feed_name, mock_feed_url)
+            assert parser.is_initialized is False
+
+
+class TestRetryInitialization:
+    """Tests for retry_initialization method"""
+
+    def test_retry_initialization_success(
+        self,
+        youtube_parser_no_init: YoutubeFeedParser,
+        mock_feed_with_entries: MagicMock,
+    ) -> None:
+        """Test retry_initialization succeeds and populates seen_videos"""
+        youtube_parser_no_init.seen_videos = set()
+
+        # Need to patch _initialize_seen_videos to return a proper set
+        def mock_init() -> set[str]:
+            return {mock_feed_with_entries.entries[0].id}
+
+        with patch.object(
+            youtube_parser_no_init, "_initialize_seen_videos", side_effect=mock_init
+        ):
+            result = youtube_parser_no_init.retry_initialization()
+            assert result is True
+            assert len(youtube_parser_no_init.seen_videos) == 1
+            assert (
+                mock_feed_with_entries.entries[0].id
+                in youtube_parser_no_init.seen_videos
+            )
+
+    def test_retry_initialization_failure(
+        self, youtube_parser_no_init: YoutubeFeedParser
+    ) -> None:
+        """Test retry_initialization fails and seen_videos stays empty"""
+        youtube_parser_no_init.seen_videos = set()
+        with patch(
+            "feedparser.parse", side_effect=urllib.error.URLError("Network error")
+        ):
+            result = youtube_parser_no_init.retry_initialization()
+            assert result is False
+            assert len(youtube_parser_no_init.seen_videos) == 0
+
+    def test_retry_initialization_logs_retry_message(
+        self, youtube_parser_no_init: YoutubeFeedParser, mock_empty_feed: MagicMock
+    ) -> None:
+        """Test retry_initialization logs retry message"""
+        with (
+            patch("feedparser.parse", return_value=mock_empty_feed),
+            patch("lib.youtube.logger") as mock_logger,
+        ):
+            youtube_parser_no_init.retry_initialization()
+            mock_logger.info.assert_any_call(
+                "Retrying initialization for %s", youtube_parser_no_init.feed_name
+            )
+
+    def test_retry_initialization_calls_initialize_seen_videos(
+        self, youtube_parser_no_init: YoutubeFeedParser
+    ) -> None:
+        """Test retry_initialization calls _initialize_seen_videos"""
+        with patch.object(
+            youtube_parser_no_init,
+            "_initialize_seen_videos",
+            return_value={"video1", "video2"},
+        ) as mock_init:
+            result = youtube_parser_no_init.retry_initialization()
+            mock_init.assert_called_once()
+            assert result is True
+            assert youtube_parser_no_init.seen_videos == {"video1", "video2"}
+
+    def test_retry_initialization_success_after_previous_failure(
+        self,
+        youtube_parser_no_init: YoutubeFeedParser,
+        mock_feed_with_entries: MagicMock,
+    ) -> None:
+        """Test retry_initialization succeeds after previous failure"""
+        # Start with empty seen_videos (simulating failed init)
+        youtube_parser_no_init.seen_videos = set()
+        assert youtube_parser_no_init.is_initialized is False
+
+        # Retry succeeds
+        def mock_init() -> set[str]:
+            return {mock_feed_with_entries.entries[0].id}
+
+        with patch.object(
+            youtube_parser_no_init, "_initialize_seen_videos", side_effect=mock_init
+        ):
+            result = youtube_parser_no_init.retry_initialization()
+            assert result is True
+            assert youtube_parser_no_init.is_initialized
+            assert len(youtube_parser_no_init.seen_videos) == 1
