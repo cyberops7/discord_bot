@@ -1,0 +1,64 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: check-image-exists
+  namespace: discordbot
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-options: FailOnError=true
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: image-checker
+          image: gcr.io/go-containerregistry/crane:debug
+          env:
+            - name: IMAGE_TO_CHECK
+              value: ""  # Will be replaced by kustomize from deployment spec
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Checking if image $IMAGE_TO_CHECK exists..."
+
+              # Retry for up to 5 minutes (30 attempts x 10 seconds)
+              for i in $(seq 1 30); do
+                if crane manifest "$IMAGE_TO_CHECK" > /dev/null 2>&1; then
+                  echo "✓ Image $IMAGE_TO_CHECK exists and is accessible!"
+                  exit 0
+                fi
+                echo "⏳ Image not found yet, retrying in 10s... (attempt $i/30)"
+                sleep 10
+              done
+
+              echo "✗ Error: Image $IMAGE_TO_CHECK not found after 5 minutes"
+              echo "   This usually means:"
+              echo "   1. The CI/CD build is still in progress"
+              echo "   2. The image tag doesn't exist in the registry"
+              echo "   3. There's a registry authentication issue"
+              exit 1
+          resources:
+            requests:
+              cpu: "125m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+      securityContext:
+        fsGroup: 10001
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
