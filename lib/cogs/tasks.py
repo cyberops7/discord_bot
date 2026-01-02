@@ -260,6 +260,18 @@ class Tasks(commands.Cog):
     async def monitor_youtube_videos(self) -> None:
         """Monitor YouTube videos for new uploads"""
         for feed_name, feed_parser in self.youtube_feeds.items():
+            # Check if the feed is initialized
+            if not feed_parser.is_initialized:
+                logger.warning(
+                    "Feed %s is not initialized, retrying initialization", feed_name
+                )
+                if not feed_parser.retry_initialization():
+                    logger.warning(
+                        "Feed %s initialization failed, skipping this run", feed_name
+                    )
+                    continue
+                logger.info("Feed %s initialization succeeded", feed_name)
+
             logger.debug("Checking %s for new videos", feed_name)
             if new_videos := feed_parser.get_new_videos():
                 logger.info("New videos found for %s: %s", feed_name, new_videos)

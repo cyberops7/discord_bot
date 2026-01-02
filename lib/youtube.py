@@ -194,6 +194,27 @@ class YoutubeFeedParser:
 
         return current_videos
 
+    @property
+    def is_initialized(self) -> bool:
+        """
+        Check if the feed has been successfully initialized.
+
+        Returns:
+            True if seen_videos is not empty
+        """
+        return len(self.seen_videos) > 0
+
+    def retry_initialization(self) -> bool:
+        """
+        Retry initialization of seen_videos.
+
+        Returns:
+            True if initialization succeeded (seen_videos is not empty)
+        """
+        logger.info("Retrying initialization for %s", self.feed_name)
+        self.seen_videos = self._initialize_seen_videos()
+        return self.is_initialized
+
     def get_latest_video(self) -> FeedParserDict:
         """Get the latest video from the feed"""
         return feedparser.parse(self.feed_url).entries[0]

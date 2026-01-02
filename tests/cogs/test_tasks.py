@@ -1263,3 +1263,246 @@ class TestTasks:
                 "Invalid channel specified in DRY_RUN_YOUTUBE mode:"
                 in caplog.records[-1].message
             )
+
+
+class TestMonitorYoutubeVideosInitializationRetry:
+    """Test cases for monitor_youtube_videos initialization retry logic"""
+
+    @async_test
+    async def test_monitor_youtube_videos_feed_not_initialized_retry_success(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test uninitialized feed with successful retry posts videos"""
+        # Mock feed parser that starts uninitialized, then succeeds on retry
+        video1 = FeedParserDict(
+            {
+                "id": "yt:video:abcdef123",
+                "link": "https://www.youtube.com/watch?v=abcdef123",
+                "yt_videoid": "abcdef123",
+                "title": "Test Video",
+                "author": "Test Author",
+                "published": "2025-10-20T12:00:00+00:00",
+                "summary": "Test Summary\nOther stuff",
+            }
+        )
+
+        mock_feed_parser = MagicMock()
+        # Mock property that changes from False to True after retry
+        mock_feed_parser.is_initialized = False
+
+        def mock_retry() -> bool:
+            mock_feed_parser.is_initialized = True
+            return True
+
+        mock_feed_parser.retry_initialization = mock_retry
+        mock_feed_parser.get_new_videos.return_value = [video1]
+        mock_feed_parser.get_thumbnail_from_entry.return_value = (
+            "https://example.com/thumb.jpg"
+        )
+
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        mock_channel = MagicMock(spec=discord.TextChannel)
+        tasks_cog.bot.get_channel = MagicMock(return_value=mock_channel)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.INFO):
+            await tasks_cog.monitor_youtube_videos()
+
+        # Verify retry was attempted (can't assert_called_once - it's a function)
+        # The fact that the video was posted means retry succeeded
+
+        # Verify videos were posted
+        mock_channel.send.assert_called_once()
+
+        # Verify logging
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any(
+            "Feed test_feed is not initialized, retrying initialization" in r.message
+            for r in warning_records
+        )
+        info_records = [r for r in caplog.records if r.levelname == "INFO"]
+        assert any(
+            "Feed test_feed initialization succeeded" in r.message for r in info_records
+        )
+
+    @async_test
+    async def test_monitor_youtube_videos_feed_not_initialized_retry_fails(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test uninitialized feed with failed retry skips posting"""
+        # Mock feed parser that is uninitialized and retry fails
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.is_initialized = False
+        mock_feed_parser.retry_initialization.return_value = False
+
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        mock_channel = MagicMock(spec=discord.TextChannel)
+        tasks_cog.bot.get_channel = MagicMock(return_value=mock_channel)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_youtube_videos()
+
+        # Verify retry was attempted
+        mock_feed_parser.retry_initialization.assert_called_once()
+
+        # Verify get_new_videos was NOT called
+        mock_feed_parser.get_new_videos.assert_not_called()
+
+        # Verify nothing was posted
+        mock_channel.send.assert_not_called()
+
+        # Verify logging
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any(
+            "Feed test_feed is not initialized, retrying initialization" in r.message
+            for r in warning_records
+        )
+        assert any(
+            "Feed test_feed initialization failed, skipping this run" in r.message
+            for r in warning_records
+        )
+
+    @async_test
+    async def test_monitor_youtube_videos_feed_not_initialized_retry_success_logs(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test correct warning and info logs during successful retry"""
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.is_initialized = False
+
+        def mock_retry() -> bool:
+            mock_feed_parser.is_initialized = True
+            return True
+
+        mock_feed_parser.retry_initialization = mock_retry
+        mock_feed_parser.get_new_videos.return_value = []
+
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+        tasks_cog.bot.get_channel = MagicMock()
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.INFO):
+            await tasks_cog.monitor_youtube_videos()
+
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warning_records) == 1
+        assert (
+            "Feed test_feed is not initialized, retrying initialization"
+            in warning_records[0].message
+        )
+
+        info_records = [r for r in caplog.records if r.levelname == "INFO"]
+        assert any(
+            "Feed test_feed initialization succeeded" in r.message for r in info_records
+        )
+
+    @async_test
+    async def test_monitor_youtube_videos_feed_not_initialized_retry_fails_logs(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test correct warning logs when retry fails"""
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.is_initialized = False
+        mock_feed_parser.retry_initialization.return_value = False
+
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+        tasks_cog.bot.get_channel = MagicMock()
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_youtube_videos()
+
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warning_records) == 2
+        assert (
+            "Feed test_feed is not initialized, retrying initialization"
+            in warning_records[0].message
+        )
+        assert (
+            "Feed test_feed initialization failed, skipping this run"
+            in warning_records[1].message
+        )
+
+    @async_test
+    async def test_monitor_youtube_videos_multiple_feeds_one_uninitialized(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test multiple feeds where one is uninitialized"""
+        # Initialized feed with videos
+        video1 = FeedParserDict(
+            {
+                "id": "yt:video:initialized_video",
+                "link": "https://www.youtube.com/watch?v=init",
+                "yt_videoid": "init",
+                "title": "Initialized Video",
+                "author": "Test Author",
+                "published": "2025-10-20T12:00:00+00:00",
+                "summary": "Test Summary",
+            }
+        )
+        mock_feed_initialized = MagicMock()
+        mock_feed_initialized.is_initialized = True
+        mock_feed_initialized.get_new_videos.return_value = [video1]
+        mock_feed_initialized.get_thumbnail_from_entry.return_value = (
+            "https://example.com/thumb.jpg"
+        )
+
+        # Uninitialized feed
+        mock_feed_uninitialized = MagicMock()
+        mock_feed_uninitialized.is_initialized = False
+        mock_feed_uninitialized.retry_initialization.return_value = False
+
+        tasks_cog.youtube_feeds = {
+            "initialized_feed": mock_feed_initialized,
+            "uninitialized_feed": mock_feed_uninitialized,
+        }
+
+        mock_channel = MagicMock(spec=discord.TextChannel)
+        tasks_cog.bot.get_channel = MagicMock(return_value=mock_channel)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_youtube_videos()
+
+        # Initialized feed should post video
+        mock_feed_initialized.get_new_videos.assert_called_once()
+        mock_channel.send.assert_called_once()
+
+        # Uninitialized feed should retry and skip
+        mock_feed_uninitialized.retry_initialization.assert_called_once()
+        mock_feed_uninitialized.get_new_videos.assert_not_called()
+
+    @async_test
+    async def test_monitor_youtube_videos_feed_initialized_skips_retry(
+        self,
+        tasks_cog: Tasks,
+    ) -> None:
+        """Test initialized feed skips retry logic"""
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.is_initialized = True
+        mock_feed_parser.get_new_videos.return_value = []
+
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+        tasks_cog.bot.get_channel = MagicMock()
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        await tasks_cog.monitor_youtube_videos()
+
+        # Verify retry_initialization was never called
+        mock_feed_parser.retry_initialization.assert_not_called()
+
+        # Verify get_new_videos was called
+        mock_feed_parser.get_new_videos.assert_called_once()
