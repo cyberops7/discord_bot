@@ -31,3 +31,12 @@ patches:
      - op: replace
        path: /spec/itemPath
        value: <<< YOUR_VAULT_PATH_HERE >>>
+  - target:
+      group: onepassword.com
+      version: v1
+      kind: OnePasswordItem
+      name: github-token
+    patch: |-
+     - op: replace
+       path: /spec/itemPath
+       value: <<< YOUR_GITHUB_VAULT_PATH_HERE >>>
