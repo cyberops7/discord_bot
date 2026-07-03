@@ -107,6 +107,17 @@ def mock_config(
         "JIMS_GARAGE": "https://www.youtube.com/feeds/videos.xml?channel_id=UCUUTdohVElFLSP4NBnlPEwA",
         "TECH_BENCH": "https://www.youtube.com/feeds/videos.xml?channel_id=UCT5B7jBug46N7abnl_izt5w",
     }
+    mock_cfg.CHANNELS.GITHUB = 222
+    mock_cfg.DRY_RUN_GITHUB = False
+    mock_cfg.GITHUB.REPO = "JamesTurland/JimsGarage"
+    mock_cfg.GITHUB.TOKEN = "test_github_token"  # noqa: S105
+    mock_cfg.GITHUB.POLL_MINUTES = 5
+    mock_cfg.GITHUB.EVENTS.ISSUE_OPENED = True
+    mock_cfg.GITHUB.EVENTS.ISSUE_COMPLETED = True
+    mock_cfg.GITHUB.EVENTS.ISSUE_NOT_PLANNED = True
+    mock_cfg.GITHUB.EVENTS.PR_OPENED = True
+    mock_cfg.GITHUB.EVENTS.PR_MERGED = True
+    mock_cfg.GITHUB.EVENTS.PR_CLOSED = True
 
     # Store original singleton state
     original_instance = Config._instance
@@ -123,6 +134,7 @@ def mock_config(
         patch("lib.bot.config", mock_cfg),
         patch("lib.bot_log_context.config", mock_cfg),
         patch("lib.cogs.tasks.config", mock_cfg),
+        patch("lib.github.config", mock_cfg),
         patch("tests.test_bot.config", mock_cfg),
         patch("lib.config.load_dotenv") as mock_load_dotenv,
     ):
