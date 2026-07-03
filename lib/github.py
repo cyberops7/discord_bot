@@ -5,6 +5,8 @@ import logging
 from dataclasses import dataclass
 from typing import NotRequired, TypedDict
 
+import aiohttp
+
 from lib.config import config  # noqa: F401
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -84,6 +86,7 @@ class GitHubMonitor:
         self._started_at = started_at
         self._last_checked = started_at
         self._seen: set[str] = set()
+        self._session: aiohttp.ClientSession | None = None
 
     @staticmethod
     def _open_kind(is_pr: bool) -> str:
@@ -130,3 +133,71 @@ class GitHubMonitor:
                         self._make_event(self._close_kind(issue, is_pr), issue)
                     )
         return events
+
+    async def start_session(self) -> None:
+        """Open the aiohttp session with GitHub auth + version headers."""
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "jims-garage-discord-bot",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        self._session = aiohttp.ClientSession(headers=headers)
+
+    async def close_session(self) -> None:
+        """Close the aiohttp session if open."""
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+
+    async def _fetch_updated_issues(
+        self,
+        *,
+        since: datetime.datetime | None,
+        max_pages: int = 5,
+        per_page: int = 100,
+    ) -> list[GitHubIssue]:
+        """Fetch issues+PRs updated since `since`, following pagination."""
+        if self._session is None:
+            return []
+        url = f"{GITHUB_API_URL}/repos/{self._repo}/issues"
+        results: list[GitHubIssue] = []
+        for page in range(1, max_pages + 1):
+            params = {
+                "state": "all",
+                "sort": "updated",
+                "direction": "desc",
+                "per_page": str(per_page),
+                "page": str(page),
+            }
+            if since is not None:
+                params["since"] = since.strftime("%Y-%m-%dT%H:%M:%SZ")
+            try:
+                async with self._session.get(url, params=params) as resp:
+                    resp.raise_for_status()
+                    page_items: list[GitHubIssue] = await resp.json()
+            except aiohttp.ClientError:
+                logger.exception("GitHub REST request failed (page %d)", page)
+                break
+            if not page_items:
+                break
+            results.extend(page_items)
+            if len(page_items) < per_page:
+                break
+        else:
+            logger.warning("GitHub REST pagination hit max_pages=%d cap", max_pages)
+        return results
+
+    async def get_latest_activity(self) -> GitHubActivityEvent | None:
+        """Return an event for the single most-recently-updated item (no gate)."""
+        issues = await self._fetch_updated_issues(since=None, max_pages=1, per_page=1)
+        if not issues:
+            return None
+        issue = issues[0]
+        is_pr = "pull_request" in issue
+        if issue.get("state") == "closed":
+            kind = self._close_kind(issue, is_pr)
+        else:
+            kind = self._open_kind(is_pr)
+        return self._make_event(kind, issue)
