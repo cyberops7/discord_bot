@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands, tasks
 from feedparser import FeedParserDict
 
-from lib import youtube
+from lib import github, youtube
 from lib.config import config
 
 if TYPE_CHECKING:
@@ -42,6 +42,13 @@ class Tasks(commands.Cog):
         else:
             logger.warning("monitor_youtube_videos task is already running")
 
+        # Bootstrap task: GitHub Activity Monitor
+        if not self.monitor_github_activity.is_running():
+            self.github_monitor: github.GitHubMonitor | None = None
+            self.monitor_github_activity.start()
+        else:
+            logger.warning("monitor_github_activity task is already running")
+
     async def cog_unload(self) -> None:
         # Close task: Clean Channel Members
         if config.DRY_RUN:
@@ -51,6 +58,11 @@ class Tasks(commands.Cog):
 
         # Close task: YouTube Video Monitor
         self.monitor_youtube_videos.cancel()
+
+        # Close task: GitHub Activity Monitor
+        self.monitor_github_activity.cancel()
+        if self.github_monitor is not None:
+            await self.github_monitor.close_session()
 
     @tasks.loop(time=datetime.time(hour=17, minute=0, second=0, tzinfo=config.TIMEZONE))
     async def clean_channel_members_task(self) -> None:
@@ -376,3 +388,91 @@ class Tasks(commands.Cog):
                 )
                 # Mention server mod in the message(s) as a test
                 await channel.send(content="<@1086729646864871454>", embed=embed)
+
+    @tasks.loop(minutes=5)
+    async def monitor_github_activity(self) -> None:
+        """Poll GitHub for new issue/PR activity and post to the channel."""
+        if self.github_monitor is None:
+            logger.warning("GitHub monitor not initialized, skipping run")
+            return
+
+        new_events = await self.github_monitor.get_new_events()
+        if not new_events:
+            logger.debug("No new GitHub activity found")
+            return
+
+        logger.info("New GitHub activity found: %d event(s)", len(new_events))
+        await self.bot.log_bot_event(
+            event="Task - GitHub Activity Monitor",
+            details=f"{len(new_events)} new GitHub event(s)",
+        )
+
+        if config.DRY_RUN_GITHUB:
+            channel = self.bot.get_channel(config.CHANNELS.BOT_PLAYGROUND)
+        else:
+            channel = self.bot.get_channel(config.CHANNELS.GITHUB)
+
+        if not isinstance(channel, discord.TextChannel):
+            logger.warning(
+                "GitHub channel %s not found or not a TextChannel",
+                config.CHANNELS.BOT_PLAYGROUND
+                if config.DRY_RUN_GITHUB
+                else config.CHANNELS.GITHUB,
+            )
+            return
+
+        for event in new_events:
+            try:
+                await channel.send(embed=self._build_github_embed(event))
+            except discord.HTTPException:
+                logger.exception("Failed to send GitHub embed for #%s", event.number)
+
+    def _build_github_embed(self, event: github.GitHubActivityEvent) -> discord.Embed:
+        """Build a compact embed for a GitHub activity event."""
+        emoji, color, verb = github.EVENT_RENDER[event.kind]
+        embed = discord.Embed(
+            title=f"{emoji} {verb} #{event.number}",
+            description=f"**[{event.title}]({event.url})**",
+            color=discord.Color(color),
+        )
+        embed.set_author(name=event.author_login)
+        if event.author_avatar_url:
+            embed.set_thumbnail(url=event.author_avatar_url)
+        embed.set_footer(text=config.GITHUB.REPO)
+        if event.linked_issues:
+            lines = [
+                f"• [#{issue.number}]({issue.url}) {issue.title}"
+                for issue in event.linked_issues
+            ]
+            value = ""
+            for index, line in enumerate(lines):
+                candidate = f"{value}\n{line}" if value else line
+                if len(candidate) > config.EMBED_MAX_LENGTH:
+                    tail = f"\n…and {len(lines) - index} more"
+                    if len(value) + len(tail) <= config.EMBED_MAX_LENGTH:
+                        value += tail
+                    break
+                value = candidate
+            embed.add_field(name="Closed issues", value=value, inline=False)
+        return embed
+
+    @monitor_github_activity.before_loop
+    async def before_monitor_github_activity(self) -> None:
+        """Initialize the monitor, honor the configured interval, smoke-test."""
+        logger.info("monitor_github_activity task is starting up...")
+        started_at = datetime.datetime.now(tz=datetime.UTC)
+        self.github_monitor = github.GitHubMonitor(
+            repo=config.GITHUB.REPO,
+            token=config.GITHUB.TOKEN,
+            started_at=started_at,
+        )
+        await self.github_monitor.start_session()
+        self.monitor_github_activity.change_interval(minutes=config.GITHUB.POLL_MINUTES)
+        await self.bot.wait_until_ready()
+
+        if config.DRY_RUN_GITHUB:
+            channel = self.bot.get_channel(config.CHANNELS.BOT_PLAYGROUND)
+            if isinstance(channel, discord.TextChannel):
+                latest = await self.github_monitor.get_latest_activity()
+                if latest is not None:
+                    await channel.send(embed=self._build_github_embed(latest))

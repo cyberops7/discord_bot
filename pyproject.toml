@@ -1,10 +1,11 @@
 [project]
 name = "discord_bot"
-version = "0.9.5"
+version = "0.10.0"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiohttp>=3.12.15",
     "colorlog>=6.10.1",
     "discord>=2.3.2",
     "dotenv>=0.9.9",

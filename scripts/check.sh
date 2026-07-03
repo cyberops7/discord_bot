@@ -79,11 +79,39 @@ run_check() {
     fi
 }
 
+# Warn (non-blocking) when a local ":latest" image has drifted from the
+# registry, so local checks don't silently diverge from CI. This is a
+# metadata-only digest comparison — it never pulls the full image — and stays
+# quiet when Docker/buildx is unavailable, the registry is unreachable, or the
+# image is not present locally yet.
+check_image_freshness() {
+    local image="$1"
+    [[ -z "$image" ]] && return 0
+
+    local local_digest remote_digest
+    local_digest=$(docker image inspect "$image" \
+        --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null \
+        | sed 's/.*@//')
+    # Not present locally: the check's own `docker run` will pull it fresh.
+    [[ -z "$local_digest" ]] && return 0
+
+    remote_digest=$(docker buildx imagetools inspect "$image" \
+        --format '{{.Manifest.Digest}}' 2>/dev/null)
+    # Offline / registry unreachable / buildx missing: skip silently.
+    [[ -z "$remote_digest" ]] && return 0
+
+    if [[ "$local_digest" != "$remote_digest" ]]; then
+        warning "Local image '$image' is behind the registry ':latest'."
+        warning "Run 'docker pull $image' so local checks match CI."
+    fi
+}
+
 # Function for Running Docker-Dependent Checks
 run_docker_check() {
     local name="$1"        # Human-Friendly Name of the Check
     local command="$2"     # Command to Run the Check
     local fix_mode="$3"    # Command to Run in Fix Mode (optional)
+    local image="$4"       # Optional ":latest" image to freshness-check
 
     if ! is_docker_running; then
         divider
@@ -91,6 +119,7 @@ run_docker_check() {
         return 0
     fi
 
+    check_image_freshness "$image"
     run_check "$name" "$command" "$fix_mode"
 }
 
@@ -114,13 +143,17 @@ run_check "Pyrefly Type Check" \
 #    "pyright"
 
 run_docker_check "Dockerfile Lint (Hadolint) - \/docker/Dockerfile\"" \
-    "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile"
+    "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile" \
+    "" \
+    "ghcr.io/hadolint/hadolint"
 
 run_docker_check "Dockerfile Lint (Hadolint) - \"docker/Dockerfile-test\"" \
     "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile-test"
 
 run_docker_check "Markdown Lint" \
-    "docker run --rm -i --platform linux/amd64 -v ./:/data markdownlint/markdownlint ./ .github/ docs/"
+    "docker run --rm -i --platform linux/amd64 -v ./:/data markdownlint/markdownlint ./ .github/ docs/" \
+    "" \
+    "markdownlint/markdownlint"
 
 run_check "ShellCheck Lint" \
     "shellcheck -x \"${REPO_DIR}\"/scripts/*.sh"

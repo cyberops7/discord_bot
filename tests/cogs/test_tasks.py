@@ -14,6 +14,7 @@ from pytest_mock import MockerFixture
 
 from lib.bot import DiscordBot
 from lib.cogs.tasks import Tasks
+from lib.github import GitHubActivityEvent
 from tests.utils import async_test
 
 
@@ -35,6 +36,9 @@ def tasks_cog(discord_bot: DiscordBot) -> Tasks:
         cog.monitor_youtube_videos.start = MagicMock()
         cog.monitor_youtube_videos.cancel = MagicMock()
         cog.monitor_youtube_videos.is_running = MagicMock(return_value=False)
+        cog.monitor_github_activity.start = MagicMock()
+        cog.monitor_github_activity.cancel = MagicMock()
+        cog.monitor_github_activity.is_running = MagicMock(return_value=False)
         return cog
 
 
@@ -368,7 +372,7 @@ class TestTasks:
             cog = Tasks(discord_bot)
             assert cog is not None
             assert isinstance(cog, Tasks)
-            assert mock_start.call_count == 2
+            assert mock_start.call_count == 3
 
     @pytest.mark.parametrize("dry_run", [True, False])
     @async_test
@@ -1506,3 +1510,314 @@ class TestMonitorYoutubeVideosInitializationRetry:
 
         # Verify get_new_videos was called
         mock_feed_parser.get_new_videos.assert_called_once()
+
+
+def _gh_event(
+    kind: str = "PR_MERGED",
+    number: int = 42,
+    *,
+    title: str = "Fix things",
+    url: str = "https://github.com/JamesTurland/JimsGarage/pull/42",
+    author_login: str = "octocat",
+    author_avatar_url: str = "https://avatars/1",
+    is_pr: bool = True,
+    linked_issues: tuple[GitHubActivityEvent, ...] = (),
+) -> GitHubActivityEvent:
+    """Build a GitHubActivityEvent for cog/embed tests."""
+    return GitHubActivityEvent(
+        key=f"{kind}:{number}",
+        kind=kind,
+        number=number,
+        title=title,
+        url=url,
+        author_login=author_login,
+        author_avatar_url=author_avatar_url,
+        is_pr=is_pr,
+        linked_issues=linked_issues,
+    )
+
+
+class TestGitHubMonitor:
+    """Tests for the monitor_github_activity task."""
+
+    @async_test
+    async def test_posts_to_github_channel(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        mock_config.DRY_RUN_GITHUB = False
+        monitor = MagicMock()
+        monitor.get_new_events = AsyncMock(return_value=[_gh_event()])
+        tasks_cog.github_monitor = monitor
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        tasks_cog.bot.get_channel = MagicMock(return_value=channel)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        await tasks_cog.monitor_github_activity()
+
+        tasks_cog.bot.get_channel.assert_called_with(mock_config.CHANNELS.GITHUB)
+        channel.send.assert_called_once()
+        assert "embed" in channel.send.call_args.kwargs
+        assert "content" not in channel.send.call_args.kwargs
+
+    @async_test
+    async def test_dry_run_posts_to_playground(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        mock_config.DRY_RUN_GITHUB = True
+        monitor = MagicMock()
+        monitor.get_new_events = AsyncMock(return_value=[_gh_event()])
+        tasks_cog.github_monitor = monitor
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        tasks_cog.bot.get_channel = MagicMock(return_value=channel)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        await tasks_cog.monitor_github_activity()
+
+        tasks_cog.bot.get_channel.assert_called_with(
+            mock_config.CHANNELS.BOT_PLAYGROUND
+        )
+
+    @async_test
+    async def test_no_events_skips(self, tasks_cog: Tasks) -> None:
+        monitor = MagicMock()
+        monitor.get_new_events = AsyncMock(return_value=[])
+        tasks_cog.github_monitor = monitor
+        tasks_cog.bot.get_channel = MagicMock()
+
+        await tasks_cog.monitor_github_activity()
+
+        tasks_cog.bot.get_channel.assert_not_called()
+
+    @async_test
+    async def test_monitor_none_skips(
+        self, tasks_cog: Tasks, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        tasks_cog.github_monitor = None
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_github_activity()
+        assert any("not initialized" in r.message for r in caplog.records)
+
+    @async_test
+    async def test_channel_missing_logs_warning(
+        self, tasks_cog: Tasks, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monitor = MagicMock()
+        monitor.get_new_events = AsyncMock(return_value=[_gh_event()])
+        tasks_cog.github_monitor = monitor
+        tasks_cog.bot.get_channel = MagicMock(return_value=None)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_github_activity()
+        assert any("not found" in r.message for r in caplog.records)
+
+    def test_build_embed_plain(self, tasks_cog: Tasks) -> None:
+        embed = tasks_cog._build_github_embed(_gh_event())
+        assert embed.title == "🟣 PR merged #42"
+        assert embed.color is not None
+        assert embed.color.value == 0x9B59B6
+
+    def test_build_embed_with_linked_issues(self, tasks_cog: Tasks) -> None:
+        linked = _gh_event(
+            kind="ISSUE_COMPLETED",
+            number=40,
+            title="Broken",
+            url="https://github.com/JamesTurland/JimsGarage/issues/40",
+            is_pr=False,
+        )
+        event = _gh_event(linked_issues=(linked,))
+        embed = tasks_cog._build_github_embed(event)
+        assert any(f.name == "Closed issues" for f in embed.fields)
+
+    def test_build_embed_no_avatar(self, tasks_cog: Tasks) -> None:
+        embed = tasks_cog._build_github_embed(_gh_event(author_avatar_url=""))
+        assert embed.thumbnail.url is None
+
+    @async_test
+    async def test_before_loop_initializes_and_smoke_posts(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        mock_config.DRY_RUN_GITHUB = True
+        fake_monitor = MagicMock()
+        fake_monitor.start_session = AsyncMock()
+        fake_monitor.get_latest_activity = AsyncMock(return_value=_gh_event())
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        tasks_cog.bot.get_channel = MagicMock(return_value=channel)
+        tasks_cog.bot.wait_until_ready = AsyncMock()
+        tasks_cog.monitor_github_activity.change_interval = MagicMock()
+
+        with patch("lib.github.GitHubMonitor", return_value=fake_monitor):
+            await tasks_cog.before_monitor_github_activity()
+
+        fake_monitor.start_session.assert_awaited_once()
+        tasks_cog.monitor_github_activity.change_interval.assert_called_once_with(
+            minutes=mock_config.GITHUB.POLL_MINUTES
+        )
+        channel.send.assert_called_once()
+
+    @async_test
+    async def test_before_loop_smoke_post_no_activity(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        mock_config.DRY_RUN_GITHUB = True
+        fake_monitor = MagicMock()
+        fake_monitor.start_session = AsyncMock()
+        fake_monitor.get_latest_activity = AsyncMock(return_value=None)
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        tasks_cog.bot.get_channel = MagicMock(return_value=channel)
+        tasks_cog.bot.wait_until_ready = AsyncMock()
+        tasks_cog.monitor_github_activity.change_interval = MagicMock()
+
+        with patch("lib.github.GitHubMonitor", return_value=fake_monitor):
+            await tasks_cog.before_monitor_github_activity()
+
+        channel.send.assert_not_called()
+
+    def test_already_running_warns(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        with patch("discord.ext.tasks.Loop.start"), caplog.at_level(logging.WARNING):
+            cog = Tasks(discord_bot)
+            with patch.object(cog, "monitor_github_activity") as mock_task:
+                mock_task.is_running.return_value = True
+                Tasks.__init__(cog, discord_bot)
+        assert any(
+            "monitor_github_activity task is already running" in r.message
+            for r in caplog.records
+        )
+
+    @async_test
+    async def test_cog_unload_closes_github_session(
+        self,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test cog_unload closes the github_monitor session when not None."""
+        mock_config.DRY_RUN = False
+        mock_monitor = MagicMock()
+        mock_monitor.close_session = AsyncMock()
+        tasks_cog.github_monitor = mock_monitor
+
+        await tasks_cog.cog_unload()
+
+        tasks_cog.monitor_github_activity.cancel.assert_called_once()  # pyrefly: ignore
+        mock_monitor.close_session.assert_awaited_once()
+
+    @async_test
+    async def test_before_loop_no_dry_run(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        """Test before_monitor_github_activity when DRY_RUN_GITHUB=False."""
+        mock_config.DRY_RUN_GITHUB = False
+        fake_monitor = MagicMock()
+        fake_monitor.start_session = AsyncMock()
+        tasks_cog.bot.get_channel = MagicMock()
+        tasks_cog.bot.wait_until_ready = AsyncMock()
+        tasks_cog.monitor_github_activity.change_interval = MagicMock()
+
+        with patch("lib.github.GitHubMonitor", return_value=fake_monitor):
+            await tasks_cog.before_monitor_github_activity()
+
+        fake_monitor.start_session.assert_awaited_once()
+        # No channel posting in non-dry-run mode
+        tasks_cog.bot.get_channel.assert_not_called()
+
+    @async_test
+    async def test_before_loop_dry_run_invalid_channel(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        """Test before_monitor_github_activity when channel is not TextChannel."""
+        mock_config.DRY_RUN_GITHUB = True
+        fake_monitor = MagicMock()
+        fake_monitor.start_session = AsyncMock()
+        fake_monitor.get_latest_activity = AsyncMock(return_value=_gh_event())
+        # Return a non-TextChannel (plain MagicMock has no TextChannel spec)
+        tasks_cog.bot.get_channel = MagicMock(return_value=MagicMock())
+        tasks_cog.bot.wait_until_ready = AsyncMock()
+        tasks_cog.monitor_github_activity.change_interval = MagicMock()
+
+        with patch("lib.github.GitHubMonitor", return_value=fake_monitor):
+            await tasks_cog.before_monitor_github_activity()
+
+        # get_latest_activity should NOT be called when channel is invalid
+        fake_monitor.get_latest_activity.assert_not_called()
+
+    def test_build_embed_linked_issues_truncated(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        """Verify the Closed issues field is capped at EMBED_MAX_LENGTH chars."""
+        long_title = "A" * 200
+        linked_issues = tuple(
+            _gh_event(
+                kind="ISSUE_COMPLETED",
+                number=i,
+                title=long_title,
+                url=f"https://github.com/JamesTurland/JimsGarage/issues/{i}",
+                is_pr=False,
+            )
+            for i in range(1, 7)
+        )
+        event = _gh_event(linked_issues=linked_issues)
+        embed = tasks_cog._build_github_embed(event)
+        field = next(f for f in embed.fields if f.name == "Closed issues")
+        assert field.value is not None
+        assert len(field.value) <= mock_config.EMBED_MAX_LENGTH
+        assert "more" in field.value
+
+    def test_build_embed_linked_issues_tail_no_fit(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        """Verify graceful truncation when even the tail line doesn't fit."""
+        # Construct a first issue whose single formatted line is exactly
+        # EMBED_MAX_LENGTH chars, so the tail cannot be appended when the
+        # second issue would overflow.
+        url = "https://github.com/JamesTurland/JimsGarage/issues/1"
+        prefix_len = len(f"• [#1]({url}) ")
+        title = "B" * (mock_config.EMBED_MAX_LENGTH - prefix_len)
+        issue1 = _gh_event(
+            kind="ISSUE_COMPLETED", number=1, title=title, url=url, is_pr=False
+        )
+        issue2 = _gh_event(
+            kind="ISSUE_COMPLETED",
+            number=2,
+            title="Short",
+            url="https://github.com/JamesTurland/JimsGarage/issues/2",
+            is_pr=False,
+        )
+        event = _gh_event(linked_issues=(issue1, issue2))
+        embed = tasks_cog._build_github_embed(event)
+        field = next(f for f in embed.fields if f.name == "Closed issues")
+        # Field must still respect the length limit even without a tail
+        assert field.value is not None
+        assert len(field.value) <= mock_config.EMBED_MAX_LENGTH
+        assert "more" not in field.value
+
+    @async_test
+    async def test_monitor_github_activity_send_failure_logs_and_continues(
+        self,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A discord.HTTPException during send is caught, logged, and skipped."""
+        mock_config.DRY_RUN_GITHUB = False
+        monitor = MagicMock()
+        monitor.get_new_events = AsyncMock(return_value=[_gh_event()])
+        tasks_cog.github_monitor = monitor
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "boom"))
+        tasks_cog.bot.get_channel = MagicMock(return_value=channel)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.ERROR):
+            await tasks_cog.monitor_github_activity()
+
+        error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert any(
+            "Failed to send GitHub embed for #42" in r.message for r in error_records
+        )

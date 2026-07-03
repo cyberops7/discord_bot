@@ -17,6 +17,10 @@ from dotenv import load_dotenv
 logger: logging.Logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# Config keys whose values must never be logged in plaintext. Matched as a
+# case-insensitive substring of the (possibly nested) environment variable name.
+_SENSITIVE_KEY_MARKERS: tuple[str, ...] = ("TOKEN", "SECRET", "PASSWORD")
+
 
 class ConfigDict:
     """A dictionary-like object that allows attribute access to nested values"""
@@ -139,10 +143,18 @@ class Config:
                     # Convert environment variable value to appropriate type
                     converted_value = cls._convert_env_value(env_value, value)
                     result[key] = converted_value
+                    display_value = (
+                        "<REDACTED>"
+                        if any(
+                            marker in env_key.upper()
+                            for marker in _SENSITIVE_KEY_MARKERS
+                        )
+                        else converted_value
+                    )
                     logger.info(
                         "Config override: %s = %s (from environment)",
                         env_key,
-                        converted_value,
+                        display_value,
                     )
                 else:
                     result[key] = value

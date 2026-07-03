@@ -890,6 +890,30 @@ class TestConfigEnvVarMethods:
         ]
         mock_logger.info.assert_has_calls(expected_calls, any_order=True)
 
+    def test_override_with_env_vars_redacts_secrets(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Sensitive keys are redacted in the log, but stored as their real value"""
+        mock_logger = mocker.patch("lib.config.logger")
+
+        env_vars = {"BOT_TOKEN": "supersecret", "LOG_LEVEL_STDOUT": "DEBUG"}
+        mocker.patch("os.getenv", side_effect=lambda key: env_vars.get(key))
+
+        data = {"BOT_TOKEN": "", "LOG_LEVEL_STDOUT": "INFO"}
+
+        result = Config._override_with_env_vars(data)
+
+        # The real override value is stored, not the redaction
+        assert result == {"BOT_TOKEN": "supersecret", "LOG_LEVEL_STDOUT": "DEBUG"}
+
+        # The secret is masked in the log; the non-secret is shown
+        mock_logger.info.assert_any_call(
+            "Config override: %s = %s (from environment)", "BOT_TOKEN", "<REDACTED>"
+        )
+        mock_logger.info.assert_any_call(
+            "Config override: %s = %s (from environment)", "LOG_LEVEL_STDOUT", "DEBUG"
+        )
+
     def test_override_with_env_vars_no_overrides(self, mocker: MockerFixture) -> None:
         """Test _override_with_env_vars when no environment variables exist"""
         mock_logger = mocker.patch("lib.config.logger")

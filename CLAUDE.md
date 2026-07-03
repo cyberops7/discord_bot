@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code
-in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with
+code in this repository.
 
 ## Project Overview
 
@@ -282,7 +282,8 @@ uv run invoke check
 
 **lib/logger_setup.py**: Configures colorlog for both file and stdout logging
 
-- Uses environment variables: `LOG_DIR`, `LOG_FILE`, `LOG_LEVEL_FILE`, `LOG_LEVEL_STDOUT`
+- Uses environment variables: `LOG_DIR`, `LOG_FILE`, `LOG_LEVEL_FILE`,
+  `LOG_LEVEL_STDOUT`
 - Provides consistent logging format across the application
 
 **lib/bot_log_context.py**: LogContext dataclass for Discord channel logging
@@ -344,7 +345,8 @@ All PRs must pass:
 The config system supports:
 
 - YAML-based configuration in `conf/config.yaml`
-- Environment variable overrides (nested keys use underscore, e.g., `CHANNELS_BOT_LOGS`)
+- Environment variable overrides (nested keys use underscore, e.g.,
+  `CHANNELS_BOT_LOGS`)
 - Special token resolution: `@env`, `@format`, `@math`
 - Access via singleton: `from lib.config import config`
 - Nested access: `config.CHANNELS.BOT_LOGS`, `config.ROLES.ADMIN`, etc.
@@ -356,7 +358,8 @@ The config system supports:
 - Use `pytest-mock` for mocking
 - Use `pytest-asyncio` for async tests
 - Coverage must be 100% (including branch coverage)
-- Test markers available: `@pytest.mark.no_mock_config` to exclude mock_config fixture
+- Test markers available: `@pytest.mark.no_mock_config` to exclude
+  mock_config fixture
 - Environment variables for pytest theme configured in pyproject.toml
 
 ## Docker

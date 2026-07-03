@@ -18,6 +18,17 @@ spec:
   itemPath: <<< REPLACE_ITEM_PATH >>>
 
 ---
+apiVersion: onepassword.com/v1
+kind: OnePasswordItem
+metadata:
+  name: github-token
+  namespace: discordbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  itemPath: <<< REPLACE_GITHUB_ITEM_PATH >>>
+
+---
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
@@ -61,7 +72,7 @@ spec:
       containers:
         - name: bot
           # TODO @cyberops7: figure out how to ignore AVD-KSV-0125 (Trivy)
-          image: ghcr.io/cyberops7/discord_bot:v0.9.5
+          image: ghcr.io/cyberops7/discord_bot:v0.10.0
           imagePullPolicy: Always
           env:
             - name: BOT_TOKEN
@@ -73,6 +84,14 @@ spec:
               value: "DEBUG"
             - name: LOG_LEVEL_STDOUT
               value: "INFO"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-token
+                  key: token
+                  optional: true
+            - name: DRY_RUN_GITHUB
+              value: "false"
             - name: DRY_RUN_YOUTUBE
               value: "false"
           ports:
