@@ -265,6 +265,20 @@ async def test_fetch_updated_issues_client_error(
 
 
 @async_test
+async def test_fetch_updated_issues_client_error_midway_returns_empty(
+    monitor: GitHubMonitor,
+) -> None:
+    full_page = [_issue(number=n) for n in range(100)]
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=[_mock_response(full_page), aiohttp.ClientError("boom")]
+    )
+    monitor._session = session
+    assert await monitor._fetch_updated_issues(since=None) == []
+    assert session.get.call_count == 2
+
+
+@async_test
 async def test_get_latest_activity_none_when_empty(
     monitor: GitHubMonitor,
 ) -> None:
@@ -276,10 +290,11 @@ async def test_get_latest_activity_none_when_empty(
 async def test_get_latest_activity_open_issue(monitor: GitHubMonitor) -> None:
     with patch.object(
         monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[_issue()])
-    ):
+    ) as fetch_mock:
         event = await monitor.get_latest_activity()
     assert event is not None
     assert event.kind == "ISSUE_OPENED"
+    fetch_mock.assert_called_once_with(since=None, max_pages=1, per_page=1)
 
 
 @async_test

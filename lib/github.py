@@ -179,7 +179,7 @@ class GitHubMonitor:
                     page_items: list[GitHubIssue] = await resp.json()
             except aiohttp.ClientError:
                 logger.exception("GitHub REST request failed (page %d)", page)
-                break
+                return []
             if not page_items:
                 break
             results.extend(page_items)
