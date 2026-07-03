@@ -1558,6 +1558,7 @@ class TestGitHubMonitor:
         tasks_cog.bot.get_channel.assert_called_with(mock_config.CHANNELS.GITHUB)
         channel.send.assert_called_once()
         assert "embed" in channel.send.call_args.kwargs
+        assert "content" not in channel.send.call_args.kwargs
 
     @async_test
     async def test_dry_run_posts_to_playground(
@@ -1715,6 +1716,7 @@ class TestGitHubMonitor:
         mock_config.DRY_RUN_GITHUB = False
         fake_monitor = MagicMock()
         fake_monitor.start_session = AsyncMock()
+        tasks_cog.bot.get_channel = MagicMock()
         tasks_cog.bot.wait_until_ready = AsyncMock()
         tasks_cog.monitor_github_activity.change_interval = MagicMock()
 
@@ -1722,7 +1724,6 @@ class TestGitHubMonitor:
             await tasks_cog.before_monitor_github_activity()
 
         fake_monitor.start_session.assert_awaited_once()
-        tasks_cog.bot.get_channel = MagicMock()
         # No channel posting in non-dry-run mode
         tasks_cog.bot.get_channel.assert_not_called()
 
