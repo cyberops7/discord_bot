@@ -24,9 +24,10 @@
    - [x] How to run locally
       - [x] `invoke build-test`
       - [x] `invoke test-docker`
-      - [x] Add `ACTIONS_STEP_DEBUG` set to `true` to Actions variable if debugging
-        workflows
-      - [ ] how to run a single test: `uv run pytest tests/test_main.py::test_main_bot_token_not_set`
+      - [x] Add `ACTIONS_STEP_DEBUG` set to `true` to Actions variable if
+        debugging workflows
+      - [ ] how to run a single test:
+        `uv run pytest tests/test_main.py::test_main_bot_token_not_set`
         or `uv run pytest -k test_main_bot_token_not_set`
 - [x] Update the `version` in `pyproject.toml`
 - [x] make -> invoke
@@ -138,7 +139,8 @@
 - [x] API logs to separate file
 - [ ] Uvicorn reverse proxy settings
 - [ ] Uvicorn settings - workers, loop, etc.
-- [ ] /status - make it smarter with different return codes in case the bot is unhealthy
+- [ ] /status - make it smarter with different return codes in case the bot
+      is unhealthy
 
 ## Docker
 
@@ -157,7 +159,7 @@
 - [x] Create `kubernetes/` directory with manifests
 - [ ] Use a prod tag, not test
 - [ ] Pull those into or from internal k3s repo (TBD)
-- [ ] [Trivy config scanning](https://trivy.dev/v0.57/docs/scanner/misconfiguration/)
+- [ ] [Trivy config scanning][trivycfg]
 
 ## Unit Testing
 
@@ -175,3 +177,5 @@
 - [x] config_parser.py
 - [ ] logger_extras.py
 - [ ] logger_setup.py
+
+[trivycfg]: https://trivy.dev/v0.57/docs/scanner/misconfiguration/

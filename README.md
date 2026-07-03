@@ -119,7 +119,8 @@ kubectl apply -k kubernetes/
 
 ## Contributing
 
-For details on contributing to the project, see [CONTRIBUTING](docs/CONTRIBUTING.md).
+For details on contributing to the project, see
+[CONTRIBUTING](docs/CONTRIBUTING.md).
 
 ## ToDos
 

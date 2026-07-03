@@ -145,9 +145,8 @@ If you do not have it installed already, you can follow the installation
 instructions for your operating system here:
 [uv installation](https://docs.astral.sh/uv/getting-started/installation/).
 
-Optional: add
-[uv and uvx shell completion](https://docs.astral.sh/uv/getting-started/installation/#shell-autocompletion)
-to your shell's rc file - e.g.:
+Optional: add [uv and uvx shell completion][uvc] to your
+shell's rc file - e.g.:
 
 ```shell
 echo 'eval "$(uv generate-shell-completion zsh)"' >> ~/.zshrc
@@ -200,8 +199,7 @@ pre-commit install
 ### Set up Invoke shell completion
 
 To make things easier using `invoke`/`inv`, you can set up tab completion for
-your shell. Invoke has
-[shell tab completion documentation](https://docs.pyinvoke.org/en/stable/invoke.html#shell-tab-completion).
+your shell. Invoke has [shell tab completion documentation][invc].
 
 Essentially, `invoke` can generate a completion script for you that you need
 to source in your shell's rc file. If you're using `zsh`, you can add:
@@ -246,7 +244,7 @@ Only a subset of the tools support automated fixing.
 ### Markdownlint Notes
 
 To see information about the various linting checks,
-see [Markdownlint RULES.md](https://github.com/markdownlint/markdownlint/blob/main/docs/RULES.md)
+see [Markdownlint RULES.md][mdl]
 
 ### Ruff Notes
 
@@ -397,7 +395,12 @@ workflows.
 
 To do this, you'll need privileged access to the repo. With that access
 granted, navigate from the GitHub repo to Settings -> Security -> Secrets and
-Variables -> [Variables](https://github.com/cyberops7/discord_bot/settings/variables/actions).
+Variables -> [Variables][ghvars].
 There is already a `ACTIONS_STEP_DEBUG` variable defined with a value of
 `false`. Change that to `true`, and re-run the workflow. Don't forget to
 change it back to `false` when you are done.
+
+[uvc]: https://docs.astral.sh/uv/getting-started/installation/
+[invc]: https://docs.pyinvoke.org/en/stable/invoke.html#shell-tab-completion
+[mdl]: https://github.com/markdownlint/markdownlint/blob/main/docs/RULES.md
+[ghvars]: https://github.com/cyberops7/discord_bot/settings/variables/actions
