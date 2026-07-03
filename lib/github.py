@@ -2,12 +2,12 @@
 
 import datetime
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import NotRequired, TypedDict
 
 import aiohttp
 
-from lib.config import config  # noqa: F401
+from lib.config import config
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -201,3 +201,72 @@ class GitHubMonitor:
         else:
             kind = self._open_kind(is_pr)
         return self._make_event(kind, issue)
+
+    def _toggle_on(self, kind: str) -> bool:
+        """Return True if the config toggle for this event kind is enabled."""
+        return bool(getattr(config.GITHUB.EVENTS, kind))
+
+    async def _resolve_linked_issues(self, pr_number: int) -> list[int]:
+        """Return issue numbers this PR officially closes (GraphQL)."""
+        if not self._token or self._session is None:
+            return []
+        owner, _, name = self._repo.partition("/")
+        query = (
+            "query($owner:String!,$name:String!,$number:Int!){"
+            "repository(owner:$owner,name:$name){"
+            "pullRequest(number:$number){"
+            "closingIssuesReferences(first:20){nodes{number}}}}}"
+        )
+        payload = {
+            "query": query,
+            "variables": {"owner": owner, "name": name, "number": pr_number},
+        }
+        try:
+            async with self._session.post(GITHUB_GRAPHQL_URL, json=payload) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except aiohttp.ClientError:
+            logger.exception("GraphQL request failed for PR #%d", pr_number)
+            return []
+        repository = (data or {}).get("data", {}).get("repository") or {}
+        pull_request = repository.get("pullRequest") or {}
+        refs = pull_request.get("closingIssuesReferences") or {}
+        nodes = refs.get("nodes") or []
+        return [n["number"] for n in nodes if "number" in n]
+
+    async def get_new_events(self) -> list[GitHubActivityEvent]:
+        """Poll, derive, gate, combine linked closes, and return postables."""
+        poll_time = datetime.datetime.now(tz=datetime.UTC)
+        issues = await self._fetch_updated_issues(since=self._last_checked)
+        derived = self._derive_events(issues)
+        fresh = [e for e in derived if e.key not in self._seen]
+        for event in fresh:
+            self._seen.add(event.key)
+        self._last_checked = poll_time
+
+        issue_closes = {
+            e.number: e for e in fresh if not e.is_pr and e.kind in _ISSUE_CLOSE_KINDS
+        }
+        combined_numbers: set[int] = set()
+        plan: list[GitHubActivityEvent] = []
+
+        for event in fresh:
+            if event.is_pr and event.kind in _PR_CLOSE_KINDS:
+                if not self._toggle_on(event.kind):
+                    continue
+                linked_nums = await self._resolve_linked_issues(event.number)
+                linked = [issue_closes[n] for n in linked_nums if n in issue_closes]
+                combined_numbers.update(i.number for i in linked)
+                plan.append(replace(event, linked_issues=tuple(linked)))
+
+        for event in fresh:
+            if event.is_pr and event.kind in _PR_CLOSE_KINDS:
+                continue
+            if event.number in combined_numbers and event.kind in _ISSUE_CLOSE_KINDS:
+                continue
+            if not self._toggle_on(event.kind):
+                continue
+            plan.append(event)
+
+        plan.sort(key=lambda e: (e.number, e.kind))
+        return plan

@@ -327,3 +327,149 @@ async def test_fetch_updated_issues_empty_page_stops(
     issues = await monitor._fetch_updated_issues(since=None, per_page=1)
     assert len(issues) == 1
     assert session.get.call_count == 2
+
+
+def _pr(number: int, merged: bool = True) -> GitHubIssue:
+    return _issue(
+        number=number,
+        title=f"PR {number}",
+        html_url=f"https://github.com/JamesTurland/JimsGarage/pull/{number}",
+        state="closed",
+        created_at=BEFORE,
+        closed_at=AFTER,
+        pull_request={"merged_at": AFTER if merged else None},
+    )
+
+
+def _closed_issue(number: int) -> GitHubIssue:
+    return _issue(
+        number=number,
+        state="closed",
+        created_at=BEFORE,
+        closed_at=AFTER,
+        state_reason="completed",
+    )
+
+
+def test_toggle_on_reads_config(monitor: GitHubMonitor) -> None:
+    assert monitor._toggle_on("PR_MERGED") is True
+
+
+@async_test
+async def test_resolve_linked_issues_parses_nodes(
+    monitor: GitHubMonitor,
+) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "pullRequest": {"closingIssuesReferences": {"nodes": [{"number": 40}]}}
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    assert await monitor._resolve_linked_issues(42) == [40]
+
+
+@async_test
+async def test_resolve_linked_issues_no_token_returns_empty() -> None:
+    m = GitHubMonitor(repo="a/b", token="", started_at=START)
+    m._session = MagicMock()
+    assert await m._resolve_linked_issues(42) == []
+
+
+@async_test
+async def test_resolve_linked_issues_no_pr_node(monitor: GitHubMonitor) -> None:
+    session = MagicMock()
+    session.post = MagicMock(
+        return_value=_mock_response({"data": {"repository": {"pullRequest": None}}})
+    )
+    monitor._session = session
+    assert await monitor._resolve_linked_issues(42) == []
+
+
+@async_test
+async def test_resolve_linked_issues_client_error(
+    monitor: GitHubMonitor,
+) -> None:
+    session = MagicMock()
+    session.post = MagicMock(side_effect=aiohttp.ClientError("boom"))
+    monitor._session = session
+    assert await monitor._resolve_linked_issues(42) == []
+
+
+@async_test
+async def test_get_new_events_seen_gate(monitor: GitHubMonitor) -> None:
+    with patch.object(
+        monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[_issue()])
+    ):
+        first = await monitor.get_new_events()
+        second = await monitor.get_new_events()
+    assert [e.kind for e in first] == ["ISSUE_OPENED"]
+    assert second == []  # already seen
+
+
+@async_test
+async def test_get_new_events_toggle_filter(
+    monitor: GitHubMonitor, mock_config: MagicMock
+) -> None:
+    mock_config.GITHUB.EVENTS.ISSUE_OPENED = False
+    with patch.object(
+        monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[_issue()])
+    ):
+        assert await monitor.get_new_events() == []
+
+
+@async_test
+async def test_get_new_events_combines_linked_close(
+    monitor: GitHubMonitor,
+) -> None:
+    items = [_pr(42), _closed_issue(40)]
+    with (
+        patch.object(
+            monitor, "_fetch_updated_issues", new=AsyncMock(return_value=items)
+        ),
+        patch.object(
+            monitor, "_resolve_linked_issues", new=AsyncMock(return_value=[40])
+        ),
+    ):
+        events = await monitor.get_new_events()
+    assert len(events) == 1
+    assert events[0].kind == "PR_MERGED"
+    assert [i.number for i in events[0].linked_issues] == [40]
+
+
+@async_test
+async def test_get_new_events_no_link_posts_separately(
+    monitor: GitHubMonitor,
+) -> None:
+    items = [_pr(42), _closed_issue(40)]
+    with (
+        patch.object(
+            monitor, "_fetch_updated_issues", new=AsyncMock(return_value=items)
+        ),
+        patch.object(monitor, "_resolve_linked_issues", new=AsyncMock(return_value=[])),
+    ):
+        events = await monitor.get_new_events()
+    assert {e.kind for e in events} == {"PR_MERGED", "ISSUE_COMPLETED"}
+    assert all(e.linked_issues == () for e in events)
+
+
+@async_test
+async def test_get_new_events_pr_toggle_off_falls_back(
+    monitor: GitHubMonitor, mock_config: MagicMock
+) -> None:
+    mock_config.GITHUB.EVENTS.PR_MERGED = False
+    items = [_pr(42), _closed_issue(40)]
+    with (
+        patch.object(
+            monitor, "_fetch_updated_issues", new=AsyncMock(return_value=items)
+        ),
+        patch.object(
+            monitor, "_resolve_linked_issues", new=AsyncMock(return_value=[40])
+        ),
+    ):
+        events = await monitor.get_new_events()
+    # PR dropped by toggle; issue close is NOT combined, posts standalone
+    assert [e.kind for e in events] == ["ISSUE_COMPLETED"]
