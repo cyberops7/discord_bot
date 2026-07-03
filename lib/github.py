@@ -228,7 +228,7 @@ class GitHubMonitor:
         except aiohttp.ClientError:
             logger.exception("GraphQL request failed for PR #%d", pr_number)
             return []
-        repository = (data or {}).get("data", {}).get("repository") or {}
+        repository = ((data or {}).get("data") or {}).get("repository") or {}
         pull_request = repository.get("pullRequest") or {}
         refs = pull_request.get("closingIssuesReferences") or {}
         nodes = refs.get("nodes") or []

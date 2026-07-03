@@ -390,6 +390,35 @@ async def test_resolve_linked_issues_no_pr_node(monitor: GitHubMonitor) -> None:
 
 
 @async_test
+async def test_resolve_linked_issues_data_null(monitor: GitHubMonitor) -> None:
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response({"data": None}))
+    monitor._session = session
+    assert await monitor._resolve_linked_issues(42) == []
+
+
+@async_test
+async def test_resolve_linked_issues_skips_nodes_without_number(
+    monitor: GitHubMonitor,
+) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "closingIssuesReferences": {
+                        "nodes": [{"number": 40}, {"title": "no number"}]
+                    }
+                }
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    assert await monitor._resolve_linked_issues(42) == [40]
+
+
+@async_test
 async def test_resolve_linked_issues_client_error(
     monitor: GitHubMonitor,
 ) -> None:
