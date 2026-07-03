@@ -3,15 +3,17 @@
 import datetime
 from collections.abc import ItemsView, KeysView, ValuesView
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
-from pytest_mock import MockerFixture
 
 from lib.config import Config, ConfigDict
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
 
 
 class TestConfigDict:

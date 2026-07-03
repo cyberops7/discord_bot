@@ -1,36 +1,36 @@
 [project]
 name = "discord_bot"
-version = "0.10.1"
+version = "0.11.0"
 description = "Discord bot for Jim's Garage"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
-    "aiohttp>=3.12.15",
+    "aiohttp>=3.14.1",
     "colorlog>=6.10.1",
     "discord>=2.3.2",
     "dotenv>=0.9.9",
-    "fastapi>=0.121.2",
+    "fastapi>=0.139.0",
     "feedparser>=6.0.12",
     "pyyaml>=6.0.3",
-    "uvicorn>=0.38.0",
+    "uvicorn>=0.49.0",
 ]
 
 [dependency-groups]
 dev = [
-    "bandit>=1.9.1",
-    "invoke>=2.2.1",
-    "pre-commit>=4.4.0",
-    "pyrefly>=0.45.2",
-    "ruff>=0.14.5",
+    "bandit>=1.9.4",
+    "invoke>=3.0.3",
+    "pre-commit>=4.6.0",
+    "pyrefly>=1.1.1",
+    "ruff>=0.15.20",
     "shellcheck-py>=0.11.0.1",
-    "yamllint>=1.35.1",
+    "yamllint>=1.38.0",
 ]
 test = [
     "httpx>=0.28.1",
-    "pytest>=9.0.1",
-    "pytest-asyncio>=1.3.0",
-    "pytest-cov>=7.0.0",
-    "pytest-env>=1.2.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-env>=1.6.0",
     "pytest-mock>=3.15.1",
 ]
 
@@ -68,7 +68,13 @@ env = [
     "PYTEST_THEME_MODE=dark",
 ]
 filterwarnings = [
-    "ignore::pytest.PytestUnraisableExceptionWarning"
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    # Starlette 1.x nudges its TestClient toward httpx2, but FastAPI still pins
+    # httpx<1.0 for TestClient — drop this once FastAPI adopts httpx2.
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    # discord.py/pytest-asyncio internals call the deprecated
+    # asyncio.iscoroutinefunction (removed in 3.14) — upstream, not ours.
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
 ]
 markers = [
     "no_mock_config: exclude the mock_config fixture",
@@ -81,11 +87,12 @@ markers = [
 [tool.ruff]
 indent-width = 4
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
+    "ASYNC240",
     "COM812",
     "D",
     "FBT001",
@@ -94,6 +101,8 @@ ignore = [
     "TD003",
     "TRY301",
 ]
+# ASYNC240 - suggests trio/anyio Path; we run on asyncio and only touch the
+#            filesystem synchronously during one-time startup (cog loading)
 # COM812 - ruff recommends disabling it for compatibilitiy (and will warn you about it every time)
 # D - docustring checking
 # FBT001, FBT002 - ruff doesn't like boolean positional arguments
@@ -116,6 +125,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 "tests/*.py" = [
     "PLR0913",  # Arg count in function def
     "PLR2004",  # Magic values
+    "PLW0108",  # Explicit lambda in mock side_effect (readable test idiom)
     "S101",     # Use of `assert`
     "SLF001"    # Accessing private member
 ]

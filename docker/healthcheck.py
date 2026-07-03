@@ -12,5 +12,5 @@ try:
     ) as response:
         data = json.loads(response.read())
         sys.exit(0 if data.get("status") == "ok" else 1)
-except (OSError, URLError, ValueError):
+except OSError, URLError, ValueError:
     sys.exit(1)

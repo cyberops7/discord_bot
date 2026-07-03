@@ -2,17 +2,15 @@
 
 import asyncio
 import gc
-from collections.abc import Generator
 from contextlib import suppress
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from discord import ClientUser
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pytest_mock import MockerFixture
 
 from lib.api import (
     AppState,
@@ -23,6 +21,11 @@ from lib.api import (
 )
 from lib.bot import DiscordBot
 from tests.utils import async_test
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from pytest_mock import MockerFixture
 
 
 @pytest.fixture(autouse=True)
@@ -88,9 +91,7 @@ async def test_lifespan_success(mocker: MockerFixture) -> None:
     mock_app.state = mocker.MagicMock()
 
     # Use the lifespan context manager
-    async with lifespan(
-        mock_app
-    ):  # pyrefly: ignore[missing-attribute] - Provided dynamically
+    async with lifespan(mock_app):  # pyrefly: ignore[missing-attribute] - Provided dynamically
         # Verify startup behavior
         mock_intents.all.assert_called_once()
         mock_discord_bot.assert_called_once_with(
@@ -136,9 +137,7 @@ async def test_lifespan_no_bot_token(
 
     # Expect a RuntimeError when no BOT_TOKEN is provided
     with pytest.raises(RuntimeError, match=r"BOT_TOKEN is required to start the bot."):
-        async with lifespan(
-            mock_app
-        ):  # pyrefly: ignore[missing-attribute] - Provided dynamically
+        async with lifespan(mock_app):  # pyrefly: ignore[missing-attribute] - Provided dynamically
             pass
 
     # Verify error logging
@@ -171,9 +170,7 @@ async def test_lifespan_cleanup_on_exception(mocker: MockerFixture) -> None:
 
     # Create a function that will raise the exception
     async def run_lifespan_with_exception() -> None:
-        async with lifespan(
-            mock_app
-        ):  # pyrefly: ignore[missing-attribute] - Provided dynamically
+        async with lifespan(mock_app):  # pyrefly: ignore[missing-attribute] - Provided dynamically
             msg = "Test exception"
             raise ValueError(msg)
 

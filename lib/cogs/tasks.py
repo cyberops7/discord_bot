@@ -18,7 +18,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 class Tasks(commands.Cog):
-    def __init__(self, bot: "DiscordBot") -> None:
+    def __init__(self, bot: DiscordBot) -> None:
         self.bot = bot
 
         # TODO @cyberops7: refactor the startup code into a separate function
@@ -224,9 +224,7 @@ class Tasks(commands.Cog):
         sorted_members = sorted(
             members,
             key=lambda m: (
-                m.joined_at
-                if m.joined_at
-                else datetime.datetime.max.replace(tzinfo=datetime.UTC)
+                m.joined_at or datetime.datetime.max.replace(tzinfo=datetime.UTC)
             ),
         )
 
@@ -253,7 +251,7 @@ class Tasks(commands.Cog):
                 if len(with_truncation) <= config.EMBED_MAX_LENGTH:
                     return with_truncation
                 # Truncation doesn't fit, return what we have
-                return result if result else "None"
+                return result or "None"
 
             # This line fits, add it to the result
             result = test_result

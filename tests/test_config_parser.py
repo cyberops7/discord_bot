@@ -1,7 +1,8 @@
 """Unit tests for config_parser.py"""
 
+from typing import TYPE_CHECKING
+
 import pytest
-from pytest_mock import MockerFixture
 
 from lib.config_parser import (
     eval_ast,
@@ -12,6 +13,9 @@ from lib.config_parser import (
     resolve_value,
     resolve_values,
 )
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
 
 
 @pytest.mark.parametrize(
@@ -61,9 +65,9 @@ def test_resolve_env_token(mocker: MockerFixture) -> None:
 
     mocker.patch(
         "os.getenv",
-        side_effect=lambda call_param, default_value: expected_value
-        if call_param == env_var_name
-        else default_value,
+        side_effect=lambda call_param, default_value: (
+            expected_value if call_param == env_var_name else default_value
+        ),
     )
     resolved_value = resolve_env_token(token_str)
 
@@ -77,9 +81,9 @@ def test_resolve_env_token_no_default(mocker: MockerFixture) -> None:
 
     mocker.patch(
         "os.getenv",
-        side_effect=lambda call_param, default_value: expected_value
-        if call_param == env_var_name
-        else default_value,
+        side_effect=lambda call_param, default_value: (
+            expected_value if call_param == env_var_name else default_value
+        ),
     )
     resolved_value = resolve_env_token(token_str)
 
@@ -102,9 +106,9 @@ def test_resolve_env_token_bad_env_name(mocker: MockerFixture) -> None:
 
     mocker.patch(
         "os.getenv",
-        side_effect=lambda call_param, default: default_value
-        if call_param == env_var_name
-        else default,
+        side_effect=lambda call_param, default: (
+            default_value if call_param == env_var_name else default
+        ),
     )
     resolved_value = resolve_env_token(token_str)
     assert resolved_value == default_value

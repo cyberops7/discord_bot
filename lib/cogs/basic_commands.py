@@ -29,7 +29,7 @@ API_LATENCY_THRESHOLD = {
 
 
 class BasicCommands(commands.Cog):
-    def __init__(self, bot: "DiscordBot") -> None:
+    def __init__(self, bot: DiscordBot) -> None:
         self.bot = bot
 
     @commands.command()
@@ -54,9 +54,7 @@ class BasicCommands(commands.Cog):
             interaction.user,
             interaction.channel,
         )
-        await interaction.response.send_message(
-            "Hello world."
-        )  # pyrefly: ignore[attr-defined]
+        await interaction.response.send_message("Hello world.")
 
     @discord.app_commands.command(  # pyrefly: ignore[unsupported-decorator]
         name="ping",
@@ -107,9 +105,7 @@ class BasicCommands(commands.Cog):
         start_time = time.perf_counter()
 
         # Send initial response to measure API response time
-        await interaction.response.send_message(
-            embed=embed
-        )  # pyrefly: ignore[attr-defined]
+        await interaction.response.send_message(embed=embed)
 
         # Calculate API response time
         end_time = time.perf_counter()

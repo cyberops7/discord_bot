@@ -1,9 +1,13 @@
 """Unit testing for utils.py"""
 
+from typing import TYPE_CHECKING
+
 import pytest
-from pytest_mock import MockerFixture
 
 from lib.utils import ensure_valid_port, validate_port
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
 
 
 @pytest.mark.parametrize(

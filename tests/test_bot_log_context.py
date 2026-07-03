@@ -1,12 +1,15 @@
 """Unit tests for bot_log_context.py"""
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import discord
 import pytest
-from pytest_mock import MockerFixture
 
 from lib.bot_log_context import LogContext
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
 
 
 @pytest.fixture(autouse=True)

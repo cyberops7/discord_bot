@@ -1,7 +1,7 @@
 """Pytest fixtures"""
 
 import datetime
-from collections.abc import Generator, Iterator
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -9,6 +9,9 @@ import pytest
 from discord import Intents
 
 from lib.bot import DiscordBot
+
+if TYPE_CHECKING:
+    from collections.abc import Generator, Iterator
 
 
 def create_mock_user(name: str, user_id: int) -> MagicMock:

@@ -4,14 +4,16 @@ import datetime
 import logging
 import os
 import tomllib
-from collections.abc import ItemsView, KeysView, ValuesView
 from datetime import tzinfo
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import yaml
 from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from collections.abc import ItemsView, KeysView, ValuesView
 
 # change this to DEBUG if debugging config initialization
 logger: logging.Logger = logging.getLogger(__name__)
@@ -86,7 +88,7 @@ class ConfigDict:
 class Config:
     """Configuration class to hold all app constants"""
 
-    _instance: Optional["Config"] = None
+    _instance: Config | None = None
     _config_data: ConfigDict | None = None
     _config_path: Path | None = None
     _pyproject_path: Path | None = None
@@ -95,7 +97,7 @@ class Config:
         """Allow accessing config values as attributes"""
         return getattr(self._config_data, name)
 
-    def __new__(cls) -> Optional["Config"]:
+    def __new__(cls) -> Config | None:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             # Load .env contents into system ENV before loading config

@@ -1,5 +1,5 @@
 # Stage 1: Build Stage
-FROM python:3.13-alpine
+FROM python:3.14-alpine
 LABEL org.opencontainers.image.description="A version of the discord_bot image for unit testing"
 LABEL org.opencontainers.image.source=https://github.com/cyberops7/discord_bot
 
@@ -26,8 +26,8 @@ RUN apk -U upgrade --no-cache && \
         musl-dev \
         vim
 
-# Install `uv`
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install `uv` (pinned; keep in sync with .pre-commit-config.yaml and CI)
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
 
 # Copy files
 RUN mkdir -p $APP_HOME

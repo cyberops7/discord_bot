@@ -2,14 +2,17 @@
 
 import socket
 import urllib.error
-from collections.abc import Generator
 from email.message import EmailMessage
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 from feedparser import FeedParserDict
 
 from lib.youtube import YoutubeFeedParser
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 @pytest.fixture

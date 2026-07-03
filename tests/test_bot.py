@@ -3,17 +3,18 @@
 import datetime
 import importlib
 import logging
-from types import ModuleType
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from types import ModuleType
+
+    from pytest_mock import MockerFixture
 
 import discord
 import pytest
 from discord.ext import commands
-from pytest_mock import MockerFixture
 
 from lib.bot import DiscordBot
 from lib.bot_log_context import LogContext
