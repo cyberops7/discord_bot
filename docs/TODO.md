@@ -157,9 +157,9 @@
 ## Kubernetes
 
 - [x] Create `kubernetes/` directory with manifests
-- [ ] Use a prod tag, not test
-- [ ] Pull those into or from internal k3s repo (TBD)
-- [ ] [Trivy config scanning][trivycfg]
+- [x] Use a prod tag, not test
+- [x] Pull those into or from internal k3s repo (TBD)
+- [x] [Trivy config scanning][trivycfg]
 
 ## Unit Testing
 
@@ -173,9 +173,9 @@
 - [x] utils.py
 - [x] main.py
 - [x] api.py
-- [ ] bot.py
+- [x] bot.py
 - [x] config_parser.py
-- [ ] logger_extras.py
-- [ ] logger_setup.py
+- [x] logger_extras.py
+- [x] logger_setup.py
 
 [trivycfg]: https://trivy.dev/v0.57/docs/scanner/misconfiguration/
