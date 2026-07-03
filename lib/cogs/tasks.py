@@ -422,7 +422,10 @@ class Tasks(commands.Cog):
             return
 
         for event in new_events:
-            await channel.send(embed=self._build_github_embed(event))
+            try:
+                await channel.send(embed=self._build_github_embed(event))
+            except discord.HTTPException:
+                logger.exception("Failed to send GitHub embed for #%s", event.number)
 
     def _build_github_embed(self, event: github.GitHubActivityEvent) -> discord.Embed:
         """Build a compact embed for a GitHub activity event."""
@@ -437,11 +440,20 @@ class Tasks(commands.Cog):
             embed.set_thumbnail(url=event.author_avatar_url)
         embed.set_footer(text=config.GITHUB.REPO)
         if event.linked_issues:
-            linked = "\n".join(
+            lines = [
                 f"• [#{issue.number}]({issue.url}) {issue.title}"
                 for issue in event.linked_issues
-            )
-            embed.add_field(name="Closed issues", value=linked, inline=False)
+            ]
+            value = ""
+            for index, line in enumerate(lines):
+                candidate = f"{value}\n{line}" if value else line
+                if len(candidate) > config.EMBED_MAX_LENGTH:
+                    tail = f"\n…and {len(lines) - index} more"
+                    if len(value) + len(tail) <= config.EMBED_MAX_LENGTH:
+                        value += tail
+                    break
+                value = candidate
+            embed.add_field(name="Closed issues", value=value, inline=False)
         return embed
 
     @monitor_github_activity.before_loop

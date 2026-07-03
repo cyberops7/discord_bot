@@ -1746,3 +1746,78 @@ class TestGitHubMonitor:
 
         # get_latest_activity should NOT be called when channel is invalid
         fake_monitor.get_latest_activity.assert_not_called()
+
+    def test_build_embed_linked_issues_truncated(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        """Verify the Closed issues field is capped at EMBED_MAX_LENGTH chars."""
+        long_title = "A" * 200
+        linked_issues = tuple(
+            _gh_event(
+                kind="ISSUE_COMPLETED",
+                number=i,
+                title=long_title,
+                url=f"https://github.com/JamesTurland/JimsGarage/issues/{i}",
+                is_pr=False,
+            )
+            for i in range(1, 7)
+        )
+        event = _gh_event(linked_issues=linked_issues)
+        embed = tasks_cog._build_github_embed(event)
+        field = next(f for f in embed.fields if f.name == "Closed issues")
+        assert field.value is not None
+        assert len(field.value) <= mock_config.EMBED_MAX_LENGTH
+        assert "more" in field.value
+
+    def test_build_embed_linked_issues_tail_no_fit(
+        self, tasks_cog: Tasks, mock_config: MagicMock
+    ) -> None:
+        """Verify graceful truncation when even the tail line doesn't fit."""
+        # Construct a first issue whose single formatted line is exactly
+        # EMBED_MAX_LENGTH chars, so the tail cannot be appended when the
+        # second issue would overflow.
+        url = "https://github.com/JamesTurland/JimsGarage/issues/1"
+        prefix_len = len(f"• [#1]({url}) ")
+        title = "B" * (mock_config.EMBED_MAX_LENGTH - prefix_len)
+        issue1 = _gh_event(
+            kind="ISSUE_COMPLETED", number=1, title=title, url=url, is_pr=False
+        )
+        issue2 = _gh_event(
+            kind="ISSUE_COMPLETED",
+            number=2,
+            title="Short",
+            url="https://github.com/JamesTurland/JimsGarage/issues/2",
+            is_pr=False,
+        )
+        event = _gh_event(linked_issues=(issue1, issue2))
+        embed = tasks_cog._build_github_embed(event)
+        field = next(f for f in embed.fields if f.name == "Closed issues")
+        # Field must still respect the length limit even without a tail
+        assert field.value is not None
+        assert len(field.value) <= mock_config.EMBED_MAX_LENGTH
+        assert "more" not in field.value
+
+    @async_test
+    async def test_monitor_github_activity_send_failure_logs_and_continues(
+        self,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A discord.HTTPException during send is caught, logged, and skipped."""
+        mock_config.DRY_RUN_GITHUB = False
+        monitor = MagicMock()
+        monitor.get_new_events = AsyncMock(return_value=[_gh_event()])
+        tasks_cog.github_monitor = monitor
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "boom"))
+        tasks_cog.bot.get_channel = MagicMock(return_value=channel)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.ERROR):
+            await tasks_cog.monitor_github_activity()
+
+        error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert any(
+            "Failed to send GitHub embed for #42" in r.message for r in error_records
+        )

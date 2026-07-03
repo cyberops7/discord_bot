@@ -78,6 +78,7 @@ spec:
                 secretKeyRef:
                   name: bot-secrets
                   key: GITHUB_TOKEN
+                  optional: true
             - name: DRY_RUN_GITHUB
               value: "false"
             - name: DRY_RUN_YOUTUBE

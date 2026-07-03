@@ -157,10 +157,10 @@ class GitHubMonitor:
         since: datetime.datetime | None,
         max_pages: int = 5,
         per_page: int = 100,
-    ) -> list[GitHubIssue]:
+    ) -> list[GitHubIssue] | None:
         """Fetch issues+PRs updated since `since`, following pagination."""
         if self._session is None:
-            return []
+            return None
         url = f"{GITHUB_API_URL}/repos/{self._repo}/issues"
         results: list[GitHubIssue] = []
         for page in range(1, max_pages + 1):
@@ -179,7 +179,7 @@ class GitHubMonitor:
                     page_items: list[GitHubIssue] = await resp.json()
             except aiohttp.ClientError:
                 logger.exception("GitHub REST request failed (page %d)", page)
-                return []
+                return None
             if not page_items:
                 break
             results.extend(page_items)
@@ -238,6 +238,12 @@ class GitHubMonitor:
         """Poll, derive, gate, combine linked closes, and return postables."""
         poll_time = datetime.datetime.now(tz=datetime.UTC)
         issues = await self._fetch_updated_issues(since=self._last_checked)
+        if issues is None:
+            logger.warning(
+                "GitHub fetch failed; leaving poll cursor at %s for retry",
+                self._last_checked,
+            )
+            return []
         derived = self._derive_events(issues)
         fresh = [e for e in derived if e.key not in self._seen]
         for event in fresh:

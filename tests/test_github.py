@@ -213,17 +213,18 @@ async def test_fetch_updated_issues_single_page(monitor: GitHubMonitor) -> None:
     session.get = MagicMock(return_value=_mock_response([_issue()]))
     monitor._session = session
     issues = await monitor._fetch_updated_issues(since=START)
+    assert issues is not None
     assert len(issues) == 1
     _, kwargs = session.get.call_args
     assert kwargs["params"]["since"] == "2026-07-03T00:00:00Z"
 
 
 @async_test
-async def test_fetch_updated_issues_no_session_returns_empty(
+async def test_fetch_updated_issues_no_session_returns_none(
     monitor: GitHubMonitor,
 ) -> None:
     monitor._session = None
-    assert await monitor._fetch_updated_issues(since=None) == []
+    assert await monitor._fetch_updated_issues(since=None) is None
 
 
 @async_test
@@ -235,6 +236,7 @@ async def test_fetch_updated_issues_paginates(monitor: GitHubMonitor) -> None:
     )
     monitor._session = session
     issues = await monitor._fetch_updated_issues(since=None)
+    assert issues is not None
     assert len(issues) == 101
     assert session.get.call_count == 2
 
@@ -250,22 +252,23 @@ async def test_fetch_updated_issues_hits_page_cap(
     with caplog.at_level(logging.WARNING):
         issues = await monitor._fetch_updated_issues(since=None, max_pages=2)
     assert session.get.call_count == 2
+    assert issues is not None
     assert len(issues) == 200
     assert any("pagination hit" in r.message for r in caplog.records)
 
 
 @async_test
-async def test_fetch_updated_issues_client_error(
+async def test_fetch_updated_issues_client_error_returns_none(
     monitor: GitHubMonitor,
 ) -> None:
     session = MagicMock()
     session.get = MagicMock(side_effect=aiohttp.ClientError("boom"))
     monitor._session = session
-    assert await monitor._fetch_updated_issues(since=None) == []
+    assert await monitor._fetch_updated_issues(since=None) is None
 
 
 @async_test
-async def test_fetch_updated_issues_client_error_midway_returns_empty(
+async def test_fetch_updated_issues_client_error_midway_returns_none(
     monitor: GitHubMonitor,
 ) -> None:
     full_page = [_issue(number=n) for n in range(100)]
@@ -274,7 +277,7 @@ async def test_fetch_updated_issues_client_error_midway_returns_empty(
         side_effect=[_mock_response(full_page), aiohttp.ClientError("boom")]
     )
     monitor._session = session
-    assert await monitor._fetch_updated_issues(since=None) == []
+    assert await monitor._fetch_updated_issues(since=None) is None
     assert session.get.call_count == 2
 
 
@@ -325,6 +328,7 @@ async def test_fetch_updated_issues_empty_page_stops(
     )
     monitor._session = session
     issues = await monitor._fetch_updated_issues(since=None, per_page=1)
+    assert issues is not None
     assert len(issues) == 1
     assert session.get.call_count == 2
 
@@ -502,3 +506,16 @@ async def test_get_new_events_pr_toggle_off_falls_back(
         events = await monitor.get_new_events()
     # PR dropped by toggle; issue close is NOT combined, posts standalone
     assert [e.kind for e in events] == ["ISSUE_COMPLETED"]
+
+
+@async_test
+async def test_get_new_events_fetch_failure_keeps_cursor(
+    monitor: GitHubMonitor,
+) -> None:
+    before = monitor._last_checked
+    with patch.object(
+        monitor, "_fetch_updated_issues", new=AsyncMock(return_value=None)
+    ):
+        result = await monitor.get_new_events()
+    assert result == []
+    assert monitor._last_checked == before
