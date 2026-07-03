@@ -18,6 +18,17 @@ spec:
   itemPath: <<< REPLACE_ITEM_PATH >>>
 
 ---
+apiVersion: onepassword.com/v1
+kind: OnePasswordItem
+metadata:
+  name: github-token
+  namespace: discordbot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  itemPath: <<< REPLACE_GITHUB_ITEM_PATH >>>
+
+---
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
@@ -76,8 +87,8 @@ spec:
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: bot-secrets
-                  key: GITHUB_TOKEN
+                  name: github-token
+                  key: token
                   optional: true
             - name: DRY_RUN_GITHUB
               value: "false"
