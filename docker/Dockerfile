@@ -1,13 +1,13 @@
 # Stage 1: Builder
-FROM python:3.13-alpine AS builder
+FROM python:3.14-alpine AS builder
 LABEL org.opencontainers.image.description="A discord bot built on discord.py with a FastAPI app providing a healthcheck endpoint"
 LABEL org.opencontainers.image.source=https://github.com/cyberops7/discord_bot
 
 # Install build dependencies
 RUN apk add --no-cache binutils
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
+# Install uv (pinned; keep in sync with .pre-commit-config.yaml and CI)
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/
 
 # Set up build directory
 WORKDIR /build
@@ -22,7 +22,7 @@ RUN uv sync --frozen --no-cache --no-default-groups
 RUN find .venv -name "*.so" -exec strip --strip-debug {} \; || true
 
 # Stage 2: Runtime
-FROM python:3.13-alpine
+FROM python:3.14-alpine
 
 # Set up default env vars
 ENV API_PORT=8080 \

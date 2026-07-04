@@ -241,7 +241,7 @@ class YoutubeFeedParser:
                     # Add to seen videos
                     self.seen_videos.add(video_id)
 
-        except (urllib.error.URLError, urllib.error.HTTPError):
+        except urllib.error.URLError, urllib.error.HTTPError:
             logger.exception("Network error parsing RSS feed")
         except TimeoutError:
             logger.exception("Timeout error parsing RSS feed")

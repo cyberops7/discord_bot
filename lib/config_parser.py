@@ -92,7 +92,7 @@ def eval_ast(expr: str) -> int | float:
             expr, mode="eval"
         ).body  # Get the body of the parsed `Expression` node
         return _eval(parsed_expr)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise
     except Exception as e:
         msg = f"Failed to evaluate expression '{expr}': {e}"
@@ -182,7 +182,7 @@ def resolve_nested_dict(
     """
     Recursively resolves values in the dictionary, including nested dictionaries.
     """
-    resolved_dict = {}
+    resolved_dict: dict[str, Any | dict[str, Any]] = {}
     for key, value in current_dict.items():
         if isinstance(value, dict):
             # Recursive call for nested dictionaries

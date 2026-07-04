@@ -3,11 +3,13 @@ import http
 import json
 import logging
 import re
-from types import TracebackType
-from typing import Any, ClassVar, Literal, override
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
 
 import colorlog
 from uvicorn.logging import AccessFormatter
+
+if TYPE_CHECKING:
+    from types import TracebackType
 
 LOG_RECORD_BUILTIN_ATTRS = {
     "args",

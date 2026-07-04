@@ -1,11 +1,14 @@
 """Unit tests for main.py"""
 
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, Mock, NonCallableMagicMock
 
 import pytest
-from pytest_mock import MockerFixture
 
 from main import main
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
 
 
 @pytest.fixture(autouse=True)

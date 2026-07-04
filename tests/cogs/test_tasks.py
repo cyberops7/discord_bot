@@ -4,18 +4,22 @@ import datetime
 import importlib
 import logging
 import sys
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import feedparser
 import pytest
 from feedparser import FeedParserDict
-from pytest_mock import MockerFixture
 
-from lib.bot import DiscordBot
 from lib.cogs.tasks import Tasks
 from lib.github import GitHubActivityEvent
 from tests.utils import async_test
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
+
+    from lib.bot import DiscordBot
 
 
 @pytest.fixture

@@ -1,19 +1,22 @@
 """Unit tests for logger_setup.py"""
 
 import logging
-from logging.handlers import QueueListener
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, NonCallableMagicMock
 
 import pytest
 import yaml
-from pytest_mock import MockerFixture
 
 from lib.logger_setup import (
     configure_logger,
     get_all_handlers,
     start_queue_listeners,
 )
+
+if TYPE_CHECKING:
+    from logging.handlers import QueueListener
+
+    from pytest_mock import MockerFixture
 
 
 class MockQueueHandler(logging.Handler):

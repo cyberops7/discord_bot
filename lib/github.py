@@ -67,7 +67,7 @@ class GitHubActivityEvent:
     author_login: str
     author_avatar_url: str
     is_pr: bool
-    linked_issues: tuple["GitHubActivityEvent", ...] = ()
+    linked_issues: tuple[GitHubActivityEvent, ...] = ()
 
 
 def _parse_dt(value: str | None) -> datetime.datetime | None:

@@ -1,8 +1,8 @@
 import asyncio
 import logging
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from discord import ClientUser, Intents
 from fastapi import FastAPI, Request
@@ -12,6 +12,9 @@ from starlette.datastructures import State as StarletteState
 
 from lib.bot import DiscordBot
 from lib.config import config
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger: logging.Logger = logging.getLogger(__name__)
 

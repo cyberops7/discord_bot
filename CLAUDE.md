@@ -336,9 +336,10 @@ All PRs must pass:
 13. **Type checking before commits**: Always run `uv run pyrefly check` before
     creating commits to catch type errors early
 14. **UV version synchronization**: Before each commit, check the currently
-    installed uv version with `uv --version` and update both
-    `.pre-commit-config.yaml` and `.github/workflows/check-test.yaml` to match
-    that version
+    installed uv version with `uv --version` and update all four pins to match:
+    `.pre-commit-config.yaml`, `.github/workflows/check-test.yaml`, and the
+    `ghcr.io/astral-sh/uv` tag in both `docker/Dockerfile` and
+    `docker/Dockerfile-test`
 
 ## Configuration System
 

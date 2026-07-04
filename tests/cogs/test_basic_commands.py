@@ -5,15 +5,18 @@ import importlib
 import logging
 import sys
 import time
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import discord
 import pytest
 from discord.ext import commands
 
-from lib.bot import DiscordBot
 from lib.cogs.basic_commands import BasicCommands
 from tests.utils import async_test
+
+if TYPE_CHECKING:
+    from lib.bot import DiscordBot
 
 
 @pytest.fixture

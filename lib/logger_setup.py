@@ -38,12 +38,12 @@ def configure_logger(file_path: str = "conf/logger.yaml") -> None:
                 logger.debug("Logging configuration: %s", yaml_config_resolved)
             except yaml.YAMLError:
                 logger.exception("Error parsing YAML file.")
-            except (AttributeError, KeyError, TypeError, ValueError):
+            except AttributeError, KeyError, TypeError, ValueError:
                 logger.exception("Error in logging configuration.")
             else:
                 start_queue_listeners()
                 return
-    except (FileNotFoundError, IsADirectoryError, OSError, PermissionError):
+    except FileNotFoundError, IsADirectoryError, OSError, PermissionError:
         logger.exception("Error reading logging configuration file.")
     # Apply basic logging as a fallback
     logging.basicConfig(level=logging.INFO)
