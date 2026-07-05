@@ -192,6 +192,10 @@ def test_closer_from_actor_missing_fields_returns_empty() -> None:
     assert GitHubMonitor._closer_from_actor({}) == ("", "")
 
 
+def test_closer_from_actor_non_string_values_returns_empty() -> None:
+    assert GitHubMonitor._closer_from_actor({"login": 42, "avatarUrl": []}) == ("", "")
+
+
 def test_event_has_closer_defaults(monitor: GitHubMonitor) -> None:
     event = monitor._make_event("ISSUE_OPENED", _issue())
     assert event.closer_login == ""
@@ -518,6 +522,46 @@ async def test_resolve_pr_details_closed_uses_timeline(
 
 
 @async_test
+async def test_resolve_pr_details_closed_selects_last_timeline_node(
+    monitor: GitHubMonitor,
+) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "mergedBy": None,
+                    "closingIssuesReferences": {"nodes": []},
+                    "timelineItems": {
+                        "nodes": [
+                            {
+                                "actor": {
+                                    "login": "old_closer",
+                                    "avatarUrl": "https://a/old",
+                                }
+                            },
+                            {
+                                "actor": {
+                                    "login": "new_closer",
+                                    "avatarUrl": "https://a/new",
+                                }
+                            },
+                        ]
+                    },
+                }
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    details = await monitor._resolve_pr_close_details(42, is_merge=False)
+    assert (details.closer_login, details.closer_avatar_url) == (
+        "new_closer",
+        "https://a/new",
+    )
+
+
+@async_test
 async def test_resolve_pr_details_closed_empty_timeline(
     monitor: GitHubMonitor,
 ) -> None:
@@ -709,6 +753,7 @@ async def test_resolve_issue_closers_builds_aliased_query(
     assert "i40:issue(number:40)" in sent_query
     assert "i41:issue(number:41)" in sent_query
     assert "CLOSED_EVENT" in sent_query
+    assert "last:1" in sent_query
 
 
 @async_test
@@ -802,6 +847,7 @@ async def test_get_latest_activity_resolves_issue_closer(
         event = await monitor.get_latest_activity()
     assert event is not None
     assert event.closer_login == "closer"
+    assert event.closer_avatar_url == "https://a/2"
 
 
 @async_test
@@ -814,3 +860,4 @@ async def test_get_latest_activity_open_has_no_closer(
         event = await monitor.get_latest_activity()
     assert event is not None
     assert event.closer_login == ""
+    assert event.closer_avatar_url == ""

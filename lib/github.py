@@ -372,6 +372,7 @@ class GitHubMonitor:
             if event.is_pr and event.kind in _PR_CLOSE_KINDS:
                 if not self._toggle_on(event.kind):
                     continue
+                # Resolve PR details directly (not via _resolve_closer) for batching.
                 details = await self._resolve_pr_close_details(
                     event.number, is_merge=event.kind == "PR_MERGED"
                 )
