@@ -26,6 +26,10 @@ EVENT_RENDER: dict[str, tuple[str, int, str]] = {
 
 _ISSUE_CLOSE_KINDS: frozenset[str] = frozenset({"ISSUE_COMPLETED", "ISSUE_NOT_PLANNED"})
 _PR_CLOSE_KINDS: frozenset[str] = frozenset({"PR_MERGED", "PR_CLOSED"})
+_CLOSED_ACTOR_FRAGMENT: str = (
+    "timelineItems(itemTypes:[CLOSED_EVENT],last:1)"
+    "{nodes{... on ClosedEvent{actor{login avatarUrl}}}}"
+)
 
 
 class GitHubUser(TypedDict):
@@ -70,6 +74,15 @@ class GitHubActivityEvent:
     closer_login: str = ""
     closer_avatar_url: str = ""
     linked_issues: tuple[GitHubActivityEvent, ...] = ()
+
+
+@dataclass(frozen=True)
+class _PRCloseDetails:
+    """Linked issue numbers and the closing actor for a PR-close event."""
+
+    linked_issue_numbers: tuple[int, ...]
+    closer_login: str
+    closer_avatar_url: str
 
 
 def _parse_dt(value: str | None) -> datetime.datetime | None:
@@ -220,16 +233,27 @@ class GitHubMonitor:
         """Return True if the config toggle for this event kind is enabled."""
         return bool(getattr(config.GITHUB.EVENTS, kind))
 
-    async def _resolve_linked_issues(self, pr_number: int) -> list[int]:
-        """Return issue numbers this PR officially closes (GraphQL)."""
+    async def _resolve_pr_close_details(
+        self, pr_number: int, *, is_merge: bool
+    ) -> _PRCloseDetails:
+        """Return linked issue numbers and the closer for a PR-close event.
+
+        A merge is attributed via `mergedBy`; a non-merge close via the last
+        `CLOSED_EVENT` actor. (A merge emits both a MergedEvent and a ClosedEvent,
+        so `timelineItems` is intentionally ignored for merges.)
+        """
+        empty = _PRCloseDetails((), "", "")
         if not self._token or self._session is None:
-            return []
+            return empty
         owner, _, name = self._repo.partition("/")
         query = (
             "query($owner:String!,$name:String!,$number:Int!){"
             "repository(owner:$owner,name:$name){"
             "pullRequest(number:$number){"
-            "closingIssuesReferences(first:20){nodes{number}}}}}"
+            "mergedBy{login avatarUrl}"
+            "closingIssuesReferences(first:20){nodes{number}}"
+            f"{_CLOSED_ACTOR_FRAGMENT}"
+            "}}}"
         )
         payload = {
             "query": query,
@@ -241,12 +265,65 @@ class GitHubMonitor:
                 data = await resp.json()
         except aiohttp.ClientError:
             logger.exception("GraphQL request failed for PR #%d", pr_number)
-            return []
-        repository = ((data or {}).get("data") or {}).get("repository") or {}
-        pull_request = repository.get("pullRequest") or {}
+            return empty
+        if data and data.get("errors"):
+            logger.warning(
+                "GraphQL errors resolving PR #%d: %s", pr_number, data["errors"]
+            )
+        pull_request = (((data or {}).get("data") or {}).get("repository") or {}).get(
+            "pullRequest"
+        ) or {}
         refs = pull_request.get("closingIssuesReferences") or {}
         nodes = refs.get("nodes") or []
-        return [n["number"] for n in nodes if "number" in n]
+        linked = tuple(n["number"] for n in nodes if "number" in n)
+        if is_merge:
+            actor = pull_request.get("mergedBy")
+        else:
+            timeline = pull_request.get("timelineItems") or {}
+            tnodes = timeline.get("nodes") or []
+            actor = tnodes[-1].get("actor") if tnodes else None
+        closer_login, closer_avatar_url = self._closer_from_actor(actor)
+        return _PRCloseDetails(linked, closer_login, closer_avatar_url)
+
+    async def _resolve_issue_closers(
+        self, numbers: list[int]
+    ) -> dict[int, tuple[str, str]]:
+        """Batch-resolve closers for standalone issue closes via one aliased query.
+
+        Holds closer resolution to a single GraphQL call per poll regardless of how
+        many issues closed, avoiding secondary-rate-limit risk on mass closes.
+        """
+        if not numbers or not self._token or self._session is None:
+            return {}
+        owner, _, name = self._repo.partition("/")
+        fields = "".join(
+            f"i{n}:issue(number:{n}){{{_CLOSED_ACTOR_FRAGMENT}}}" for n in numbers
+        )
+        query = (
+            "query($owner:String!,$name:String!){"
+            "repository(owner:$owner,name:$name){"
+            f"{fields}"
+            "}}"
+        )
+        payload = {"query": query, "variables": {"owner": owner, "name": name}}
+        try:
+            async with self._session.post(GITHUB_GRAPHQL_URL, json=payload) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except aiohttp.ClientError:
+            logger.exception("GraphQL request failed for issue closers")
+            return {}
+        if data and data.get("errors"):
+            logger.warning("GraphQL errors resolving issue closers: %s", data["errors"])
+        repository = ((data or {}).get("data") or {}).get("repository") or {}
+        result: dict[int, tuple[str, str]] = {}
+        for number in numbers:
+            node = repository.get(f"i{number}") or {}
+            timeline = node.get("timelineItems") or {}
+            tnodes = timeline.get("nodes") or []
+            actor = tnodes[-1].get("actor") if tnodes else None
+            result[number] = self._closer_from_actor(actor)
+        return result
 
     async def get_new_events(self) -> list[GitHubActivityEvent]:
         """Poll, derive, gate, combine linked closes, and return postables."""
@@ -274,11 +351,36 @@ class GitHubMonitor:
             if event.is_pr and event.kind in _PR_CLOSE_KINDS:
                 if not self._toggle_on(event.kind):
                     continue
-                linked_nums = await self._resolve_linked_issues(event.number)
-                linked = [issue_closes[n] for n in linked_nums if n in issue_closes]
+                details = await self._resolve_pr_close_details(
+                    event.number, is_merge=event.kind == "PR_MERGED"
+                )
+                linked = [
+                    issue_closes[n]
+                    for n in details.linked_issue_numbers
+                    if n in issue_closes
+                ]
                 combined_numbers.update(i.number for i in linked)
-                plan.append(replace(event, linked_issues=tuple(linked)))
+                plan.append(
+                    replace(
+                        event,
+                        linked_issues=tuple(linked),
+                        closer_login=details.closer_login,
+                        closer_avatar_url=details.closer_avatar_url,
+                    )
+                )
 
+        await self._enqueue_non_pr_events(fresh, combined_numbers, plan)
+        plan.sort(key=lambda e: (e.number, e.kind))
+        return plan
+
+    async def _enqueue_non_pr_events(
+        self,
+        fresh: list[GitHubActivityEvent],
+        combined_numbers: set[int],
+        plan: list[GitHubActivityEvent],
+    ) -> None:
+        """Add toggled-on, non-PR-close events to plan, resolving issue closers."""
+        standalone_issue_closes: list[GitHubActivityEvent] = []
         for event in fresh:
             if event.is_pr and event.kind in _PR_CLOSE_KINDS:
                 continue
@@ -286,7 +388,17 @@ class GitHubMonitor:
                 continue
             if not self._toggle_on(event.kind):
                 continue
-            plan.append(event)
+            if event.kind in _ISSUE_CLOSE_KINDS:
+                standalone_issue_closes.append(event)
+            else:
+                plan.append(event)
 
-        plan.sort(key=lambda e: (e.number, e.kind))
-        return plan
+        if standalone_issue_closes:
+            closers = await self._resolve_issue_closers(
+                [e.number for e in standalone_issue_closes]
+            )
+            for event in standalone_issue_closes:
+                login, avatar = closers.get(event.number, ("", ""))
+                plan.append(
+                    replace(event, closer_login=login, closer_avatar_url=avatar)
+                )
