@@ -1525,6 +1525,8 @@ def _gh_event(
     author_login: str = "octocat",
     author_avatar_url: str = "https://avatars/1",
     is_pr: bool = True,
+    closer_login: str = "",
+    closer_avatar_url: str = "",
     linked_issues: tuple[GitHubActivityEvent, ...] = (),
 ) -> GitHubActivityEvent:
     """Build a GitHubActivityEvent for cog/embed tests."""
@@ -1537,6 +1539,8 @@ def _gh_event(
         author_login=author_login,
         author_avatar_url=author_avatar_url,
         is_pr=is_pr,
+        closer_login=closer_login,
+        closer_avatar_url=closer_avatar_url,
         linked_issues=linked_issues,
     )
 
@@ -1637,6 +1641,53 @@ class TestGitHubMonitor:
     def test_build_embed_no_avatar(self, tasks_cog: Tasks) -> None:
         embed = tasks_cog._build_github_embed(_gh_event(author_avatar_url=""))
         assert embed.thumbnail.url is None
+
+    def test_build_embed_close_shows_handoff(self, tasks_cog: Tasks) -> None:
+        event = _gh_event(
+            author_login="opener",
+            closer_login="closer",
+            closer_avatar_url="https://avatars/2",
+        )
+        embed = tasks_cog._build_github_embed(event)
+        assert embed.author.name == "opener → closer"
+        assert embed.thumbnail.url == "https://avatars/2"
+
+    def test_build_embed_open_unchanged(self, tasks_cog: Tasks) -> None:
+        event = _gh_event(
+            kind="ISSUE_OPENED",
+            is_pr=False,
+            author_login="opener",
+            author_avatar_url="https://avatars/1",
+        )
+        embed = tasks_cog._build_github_embed(event)
+        assert embed.author.name == "opener"
+        assert embed.thumbnail.url == "https://avatars/1"
+
+    def test_build_embed_self_close(self, tasks_cog: Tasks) -> None:
+        event = _gh_event(author_login="cyberops7", closer_login="cyberops7")
+        embed = tasks_cog._build_github_embed(event)
+        assert embed.author.name == "cyberops7 → cyberops7"
+
+    def test_build_embed_unknown_closer_falls_back(self, tasks_cog: Tasks) -> None:
+        event = _gh_event(
+            author_login="opener",
+            author_avatar_url="https://avatars/1",
+            closer_login="",
+            closer_avatar_url="",
+        )
+        embed = tasks_cog._build_github_embed(event)
+        assert embed.author.name == "opener → unknown"
+        assert embed.thumbnail.url == "https://avatars/1"
+
+    def test_build_embed_bot_closer_rendered_as_is(self, tasks_cog: Tasks) -> None:
+        event = _gh_event(author_login="opener", closer_login="github-actions[bot]")
+        embed = tasks_cog._build_github_embed(event)
+        assert embed.author.name == "opener → github-actions[bot]"
+
+    def test_build_embed_deleted_opener(self, tasks_cog: Tasks) -> None:
+        event = _gh_event(author_login="", closer_login="closer")
+        embed = tasks_cog._build_github_embed(event)
+        assert embed.author.name == "unknown → closer"
 
     @async_test
     async def test_before_loop_initializes_and_smoke_posts(
