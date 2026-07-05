@@ -177,6 +177,26 @@ def test_event_is_frozen() -> None:
         setattr(event, "number", 2)  # noqa: B010
 
 
+def test_closer_from_actor_extracts_login_and_avatar() -> None:
+    assert GitHubMonitor._closer_from_actor(
+        {"login": "closer", "avatarUrl": "https://avatars/2"}
+    ) == ("closer", "https://avatars/2")
+
+
+def test_closer_from_actor_none_returns_empty() -> None:
+    assert GitHubMonitor._closer_from_actor(None) == ("", "")
+
+
+def test_closer_from_actor_missing_fields_returns_empty() -> None:
+    assert GitHubMonitor._closer_from_actor({}) == ("", "")
+
+
+def test_event_has_closer_defaults(monitor: GitHubMonitor) -> None:
+    event = monitor._make_event("ISSUE_OPENED", _issue())
+    assert event.closer_login == ""
+    assert event.closer_avatar_url == ""
+
+
 def _mock_response(json_value: object) -> MagicMock:
     """Build a mock aiohttp response usable as an async context manager."""
     resp = MagicMock()

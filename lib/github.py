@@ -67,6 +67,8 @@ class GitHubActivityEvent:
     author_login: str
     author_avatar_url: str
     is_pr: bool
+    closer_login: str = ""
+    closer_avatar_url: str = ""
     linked_issues: tuple[GitHubActivityEvent, ...] = ()
 
 
@@ -102,6 +104,18 @@ class GitHubMonitor:
         if reason in ("not_planned", "duplicate"):
             return "ISSUE_NOT_PLANNED"
         return "ISSUE_COMPLETED"
+
+    @staticmethod
+    def _closer_from_actor(actor: object) -> tuple[str, str]:
+        """Extract (login, avatar_url) from a GraphQL actor node; empty if absent."""
+        if not isinstance(actor, dict):
+            return "", ""
+        login = actor.get("login")
+        avatar = actor.get("avatarUrl")
+        return (
+            login if isinstance(login, str) else "",
+            avatar if isinstance(avatar, str) else "",
+        )
 
     @staticmethod
     def _make_event(kind: str, issue: GitHubIssue) -> GitHubActivityEvent:
