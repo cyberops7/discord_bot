@@ -433,9 +433,16 @@ class Tasks(commands.Cog):
             description=f"**[{event.title}]({event.url})**",
             color=discord.Color(color),
         )
-        embed.set_author(name=event.author_login)
-        if event.author_avatar_url:
-            embed.set_thumbnail(url=event.author_avatar_url)
+        if event.kind in github.CLOSE_KINDS:
+            opener = event.author_login or "unknown"
+            closer = event.closer_login or "unknown"
+            embed.set_author(name=f"{opener} → {closer}")
+            thumbnail_url = event.closer_avatar_url or event.author_avatar_url
+        else:
+            embed.set_author(name=event.author_login)
+            thumbnail_url = event.author_avatar_url
+        if thumbnail_url:
+            embed.set_thumbnail(url=thumbnail_url)
         embed.set_footer(text=config.GITHUB.REPO)
         if event.linked_issues:
             lines = [

@@ -14,6 +14,7 @@ from lib.github import (
     GitHubIssue,
     GitHubMonitor,
     _parse_dt,
+    _PRCloseDetails,
 )
 from tests.utils import async_test
 
@@ -175,6 +176,30 @@ def test_event_is_frozen() -> None:
     )
     with pytest.raises(AttributeError):
         setattr(event, "number", 2)  # noqa: B010
+
+
+def test_closer_from_actor_extracts_login_and_avatar() -> None:
+    assert GitHubMonitor._closer_from_actor(
+        {"login": "closer", "avatarUrl": "https://avatars/2"}
+    ) == ("closer", "https://avatars/2")
+
+
+def test_closer_from_actor_none_returns_empty() -> None:
+    assert GitHubMonitor._closer_from_actor(None) == ("", "")
+
+
+def test_closer_from_actor_missing_fields_returns_empty() -> None:
+    assert GitHubMonitor._closer_from_actor({}) == ("", "")
+
+
+def test_closer_from_actor_non_string_values_returns_empty() -> None:
+    assert GitHubMonitor._closer_from_actor({"login": 42, "avatarUrl": []}) == ("", "")
+
+
+def test_event_has_closer_defaults(monitor: GitHubMonitor) -> None:
+    event = monitor._make_event("ISSUE_OPENED", _issue())
+    assert event.closer_login == ""
+    assert event.closer_avatar_url == ""
 
 
 def _mock_response(json_value: object) -> MagicMock:
@@ -360,58 +385,14 @@ def test_toggle_on_reads_config(monitor: GitHubMonitor) -> None:
 
 
 @async_test
-async def test_resolve_linked_issues_parses_nodes(
-    monitor: GitHubMonitor,
-) -> None:
-    data = {
-        "data": {
-            "repository": {
-                "pullRequest": {"closingIssuesReferences": {"nodes": [{"number": 40}]}}
-            }
-        }
-    }
-    session = MagicMock()
-    session.post = MagicMock(return_value=_mock_response(data))
-    monitor._session = session
-    assert await monitor._resolve_linked_issues(42) == [40]
-
-
-@async_test
-async def test_resolve_linked_issues_no_token_returns_empty() -> None:
-    m = GitHubMonitor(repo="a/b", token="", started_at=START)
-    m._session = MagicMock()
-    assert await m._resolve_linked_issues(42) == []
-
-
-@async_test
-async def test_resolve_linked_issues_no_pr_node(monitor: GitHubMonitor) -> None:
-    session = MagicMock()
-    session.post = MagicMock(
-        return_value=_mock_response({"data": {"repository": {"pullRequest": None}}})
-    )
-    monitor._session = session
-    assert await monitor._resolve_linked_issues(42) == []
-
-
-@async_test
-async def test_resolve_linked_issues_data_null(monitor: GitHubMonitor) -> None:
-    session = MagicMock()
-    session.post = MagicMock(return_value=_mock_response({"data": None}))
-    monitor._session = session
-    assert await monitor._resolve_linked_issues(42) == []
-
-
-@async_test
-async def test_resolve_linked_issues_skips_nodes_without_number(
-    monitor: GitHubMonitor,
-) -> None:
+async def test_resolve_pr_details_parses_linked(monitor: GitHubMonitor) -> None:
     data = {
         "data": {
             "repository": {
                 "pullRequest": {
-                    "closingIssuesReferences": {
-                        "nodes": [{"number": 40}, {"title": "no number"}]
-                    }
+                    "mergedBy": None,
+                    "closingIssuesReferences": {"nodes": [{"number": 40}]},
+                    "timelineItems": {"nodes": []},
                 }
             }
         }
@@ -419,17 +400,201 @@ async def test_resolve_linked_issues_skips_nodes_without_number(
     session = MagicMock()
     session.post = MagicMock(return_value=_mock_response(data))
     monitor._session = session
-    assert await monitor._resolve_linked_issues(42) == [40]
+    details = await monitor._resolve_pr_close_details(42, is_merge=False)
+    assert details.linked_issue_numbers == (40,)
 
 
 @async_test
-async def test_resolve_linked_issues_client_error(
+async def test_resolve_pr_details_no_token_returns_empty() -> None:
+    m = GitHubMonitor(repo="a/b", token="", started_at=START)
+    m._session = MagicMock()
+    details = await m._resolve_pr_close_details(42, is_merge=True)
+    assert details == _PRCloseDetails((), "", "")
+
+
+@async_test
+async def test_resolve_pr_details_no_pr_node(monitor: GitHubMonitor) -> None:
+    session = MagicMock()
+    session.post = MagicMock(
+        return_value=_mock_response({"data": {"repository": {"pullRequest": None}}})
+    )
+    monitor._session = session
+    details = await monitor._resolve_pr_close_details(42, is_merge=True)
+    assert details == _PRCloseDetails((), "", "")
+
+
+@async_test
+async def test_resolve_pr_details_data_null(monitor: GitHubMonitor) -> None:
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response({"data": None}))
+    monitor._session = session
+    details = await monitor._resolve_pr_close_details(42, is_merge=True)
+    assert details == _PRCloseDetails((), "", "")
+
+
+@async_test
+async def test_resolve_pr_details_skips_nodes_without_number(
     monitor: GitHubMonitor,
 ) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "mergedBy": None,
+                    "closingIssuesReferences": {
+                        "nodes": [{"number": 40}, {"title": "no number"}]
+                    },
+                    "timelineItems": {"nodes": []},
+                }
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    details = await monitor._resolve_pr_close_details(42, is_merge=False)
+    assert details.linked_issue_numbers == (40,)
+
+
+@async_test
+async def test_resolve_pr_details_client_error(monitor: GitHubMonitor) -> None:
     session = MagicMock()
     session.post = MagicMock(side_effect=aiohttp.ClientError("boom"))
     monitor._session = session
-    assert await monitor._resolve_linked_issues(42) == []
+    details = await monitor._resolve_pr_close_details(42, is_merge=True)
+    assert details == _PRCloseDetails((), "", "")
+
+
+@async_test
+async def test_resolve_pr_details_merged_uses_mergedby(
+    monitor: GitHubMonitor,
+) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "mergedBy": {"login": "merger", "avatarUrl": "https://avatars/9"},
+                    "closingIssuesReferences": {"nodes": []},
+                    "timelineItems": {
+                        "nodes": [{"actor": {"login": "other", "avatarUrl": "x"}}]
+                    },
+                }
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    details = await monitor._resolve_pr_close_details(42, is_merge=True)
+    assert (details.closer_login, details.closer_avatar_url) == (
+        "merger",
+        "https://avatars/9",
+    )
+
+
+@async_test
+async def test_resolve_pr_details_closed_uses_timeline(
+    monitor: GitHubMonitor,
+) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "mergedBy": None,
+                    "closingIssuesReferences": {"nodes": []},
+                    "timelineItems": {
+                        "nodes": [
+                            {"actor": {"login": "closer", "avatarUrl": "https://a/3"}}
+                        ]
+                    },
+                }
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    details = await monitor._resolve_pr_close_details(42, is_merge=False)
+    assert (details.closer_login, details.closer_avatar_url) == (
+        "closer",
+        "https://a/3",
+    )
+
+
+@async_test
+async def test_resolve_pr_details_closed_selects_last_timeline_node(
+    monitor: GitHubMonitor,
+) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "mergedBy": None,
+                    "closingIssuesReferences": {"nodes": []},
+                    "timelineItems": {
+                        "nodes": [
+                            {
+                                "actor": {
+                                    "login": "old_closer",
+                                    "avatarUrl": "https://a/old",
+                                }
+                            },
+                            {
+                                "actor": {
+                                    "login": "new_closer",
+                                    "avatarUrl": "https://a/new",
+                                }
+                            },
+                        ]
+                    },
+                }
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    details = await monitor._resolve_pr_close_details(42, is_merge=False)
+    assert (details.closer_login, details.closer_avatar_url) == (
+        "new_closer",
+        "https://a/new",
+    )
+
+
+@async_test
+async def test_resolve_pr_details_closed_empty_timeline(
+    monitor: GitHubMonitor,
+) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "mergedBy": None,
+                    "closingIssuesReferences": {"nodes": []},
+                    "timelineItems": {"nodes": []},
+                }
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    details = await monitor._resolve_pr_close_details(42, is_merge=False)
+    assert (details.closer_login, details.closer_avatar_url) == ("", "")
+
+
+@async_test
+async def test_resolve_pr_details_logs_graphql_errors(
+    monitor: GitHubMonitor, caplog: pytest.LogCaptureFixture
+) -> None:
+    data = {"data": {"repository": None}, "errors": [{"type": "RATE_LIMITED"}]}
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    with caplog.at_level(logging.WARNING):
+        details = await monitor._resolve_pr_close_details(42, is_merge=True)
+    assert details == _PRCloseDetails((), "", "")
+    assert any("GraphQL errors" in r.message for r in caplog.records)
 
 
 @async_test
@@ -464,13 +629,16 @@ async def test_get_new_events_combines_linked_close(
             monitor, "_fetch_updated_issues", new=AsyncMock(return_value=items)
         ),
         patch.object(
-            monitor, "_resolve_linked_issues", new=AsyncMock(return_value=[40])
+            monitor,
+            "_resolve_pr_close_details",
+            new=AsyncMock(return_value=_PRCloseDetails((40,), "merger", "https://a/9")),
         ),
     ):
         events = await monitor.get_new_events()
     assert len(events) == 1
-    assert events[0].kind == "PR_MERGED"
-    assert [i.number for i in events[0].linked_issues] == [40]
+    pr_event = next(e for e in events if e.is_pr)
+    assert [i.number for i in pr_event.linked_issues] == [40]
+    assert pr_event.closer_login == "merger"
 
 
 @async_test
@@ -482,10 +650,14 @@ async def test_get_new_events_no_link_posts_separately(
         patch.object(
             monitor, "_fetch_updated_issues", new=AsyncMock(return_value=items)
         ),
-        patch.object(monitor, "_resolve_linked_issues", new=AsyncMock(return_value=[])),
+        patch.object(
+            monitor,
+            "_resolve_pr_close_details",
+            new=AsyncMock(return_value=_PRCloseDetails((), "", "")),
+        ),
+        patch.object(monitor, "_resolve_issue_closers", new=AsyncMock(return_value={})),
     ):
         events = await monitor.get_new_events()
-    assert {e.kind for e in events} == {"PR_MERGED", "ISSUE_COMPLETED"}
     assert all(e.linked_issues == () for e in events)
 
 
@@ -500,11 +672,14 @@ async def test_get_new_events_pr_toggle_off_falls_back(
             monitor, "_fetch_updated_issues", new=AsyncMock(return_value=items)
         ),
         patch.object(
-            monitor, "_resolve_linked_issues", new=AsyncMock(return_value=[40])
+            monitor,
+            "_resolve_pr_close_details",
+            new=AsyncMock(return_value=_PRCloseDetails((40,), "merger", "https://a/9")),
         ),
+        patch.object(monitor, "_resolve_issue_closers", new=AsyncMock(return_value={})),
     ):
         events = await monitor.get_new_events()
-    # PR dropped by toggle; issue close is NOT combined, posts standalone
+    # PR toggled off -> issue #40 posts on its own (not combined)
     assert [e.kind for e in events] == ["ISSUE_COMPLETED"]
 
 
@@ -519,3 +694,170 @@ async def test_get_new_events_fetch_failure_keeps_cursor(
         result = await monitor.get_new_events()
     assert result == []
     assert monitor._last_checked == before
+
+
+@async_test
+async def test_resolve_issue_closers_empty_returns_empty(
+    monitor: GitHubMonitor,
+) -> None:
+    assert await monitor._resolve_issue_closers([]) == {}
+
+
+@async_test
+async def test_resolve_issue_closers_no_session(monitor: GitHubMonitor) -> None:
+    monitor._session = None
+    assert await monitor._resolve_issue_closers([40]) == {}
+
+
+@async_test
+async def test_resolve_issue_closers_no_token() -> None:
+    m = GitHubMonitor(repo="a/b", token="", started_at=START)
+    m._session = MagicMock()
+    assert await m._resolve_issue_closers([40]) == {}
+
+
+@async_test
+async def test_resolve_issue_closers_parses_aliases(
+    monitor: GitHubMonitor,
+) -> None:
+    data = {
+        "data": {
+            "repository": {
+                "i40": {
+                    "timelineItems": {
+                        "nodes": [
+                            {"actor": {"login": "alice", "avatarUrl": "https://a/1"}}
+                        ]
+                    }
+                },
+                "i41": {"timelineItems": {"nodes": []}},
+            }
+        }
+    }
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    result = await monitor._resolve_issue_closers([40, 41])
+    assert result == {40: ("alice", "https://a/1"), 41: ("", "")}
+
+
+@async_test
+async def test_resolve_issue_closers_builds_aliased_query(
+    monitor: GitHubMonitor,
+) -> None:
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response({"data": {"repository": {}}}))
+    monitor._session = session
+    await monitor._resolve_issue_closers([40, 41])
+    sent_query = session.post.call_args.kwargs["json"]["query"]
+    assert "i40:issue(number:40)" in sent_query
+    assert "i41:issue(number:41)" in sent_query
+    assert "CLOSED_EVENT" in sent_query
+    assert "last:1" in sent_query
+
+
+@async_test
+async def test_resolve_issue_closers_client_error(monitor: GitHubMonitor) -> None:
+    session = MagicMock()
+    session.post = MagicMock(side_effect=aiohttp.ClientError("boom"))
+    monitor._session = session
+    assert await monitor._resolve_issue_closers([40]) == {}
+
+
+@async_test
+async def test_resolve_issue_closers_logs_graphql_errors(
+    monitor: GitHubMonitor, caplog: pytest.LogCaptureFixture
+) -> None:
+    data = {"data": {"repository": {}}, "errors": [{"type": "FORBIDDEN"}]}
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response(data))
+    monitor._session = session
+    with caplog.at_level(logging.WARNING):
+        result = await monitor._resolve_issue_closers([40])
+    assert result == {40: ("", "")}
+    assert any("GraphQL errors" in r.message for r in caplog.records)
+
+
+@async_test
+async def test_get_new_events_populates_issue_closer(
+    monitor: GitHubMonitor,
+) -> None:
+    with (
+        patch.object(
+            monitor,
+            "_fetch_updated_issues",
+            new=AsyncMock(return_value=[_closed_issue(40)]),
+        ),
+        patch.object(
+            monitor,
+            "_resolve_issue_closers",
+            new=AsyncMock(return_value={40: ("closer", "https://a/2")}),
+        ),
+    ):
+        events = await monitor.get_new_events()
+    assert len(events) == 1
+    assert events[0].closer_login == "closer"
+    assert events[0].closer_avatar_url == "https://a/2"
+
+
+@async_test
+async def test_resolve_closer_non_close_returns_empty(
+    monitor: GitHubMonitor,
+) -> None:
+    event = monitor._make_event("ISSUE_OPENED", _issue())
+    assert await monitor._resolve_closer(event) == ("", "")
+
+
+@async_test
+async def test_get_latest_activity_resolves_pr_closer(
+    monitor: GitHubMonitor,
+) -> None:
+    payload = _issue(state="closed", closed_at=AFTER, pull_request={"merged_at": AFTER})
+    with (
+        patch.object(
+            monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[payload])
+        ),
+        patch.object(
+            monitor,
+            "_resolve_pr_close_details",
+            new=AsyncMock(return_value=_PRCloseDetails((), "merger", "https://a/9")),
+        ),
+    ):
+        event = await monitor.get_latest_activity()
+    assert event is not None
+    assert event.closer_login == "merger"
+    assert event.closer_avatar_url == "https://a/9"
+
+
+@async_test
+async def test_get_latest_activity_resolves_issue_closer(
+    monitor: GitHubMonitor,
+) -> None:
+    payload = _closed_issue(40)
+    with (
+        patch.object(
+            monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[payload])
+        ),
+        patch.object(
+            monitor,
+            "_resolve_issue_closers",
+            new=AsyncMock(return_value={40: ("closer", "https://a/2")}),
+        ),
+    ):
+        event = await monitor.get_latest_activity()
+    assert event is not None
+    assert event.closer_login == "closer"
+    assert event.closer_avatar_url == "https://a/2"
+
+
+@async_test
+async def test_get_latest_activity_open_has_no_closer(
+    monitor: GitHubMonitor,
+) -> None:
+    with patch.object(
+        monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[_issue()])
+    ):
+        event = await monitor.get_latest_activity()
+    assert event is not None
+    assert event.closer_login == ""
+    assert event.closer_avatar_url == ""
