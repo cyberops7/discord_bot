@@ -753,3 +753,64 @@ async def test_get_new_events_populates_issue_closer(
     assert len(events) == 1
     assert events[0].closer_login == "closer"
     assert events[0].closer_avatar_url == "https://a/2"
+
+
+@async_test
+async def test_resolve_closer_non_close_returns_empty(
+    monitor: GitHubMonitor,
+) -> None:
+    event = monitor._make_event("ISSUE_OPENED", _issue())
+    assert await monitor._resolve_closer(event) == ("", "")
+
+
+@async_test
+async def test_get_latest_activity_resolves_pr_closer(
+    monitor: GitHubMonitor,
+) -> None:
+    payload = _issue(state="closed", closed_at=AFTER, pull_request={"merged_at": AFTER})
+    with (
+        patch.object(
+            monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[payload])
+        ),
+        patch.object(
+            monitor,
+            "_resolve_pr_close_details",
+            new=AsyncMock(return_value=_PRCloseDetails((), "merger", "https://a/9")),
+        ),
+    ):
+        event = await monitor.get_latest_activity()
+    assert event is not None
+    assert event.closer_login == "merger"
+    assert event.closer_avatar_url == "https://a/9"
+
+
+@async_test
+async def test_get_latest_activity_resolves_issue_closer(
+    monitor: GitHubMonitor,
+) -> None:
+    payload = _closed_issue(40)
+    with (
+        patch.object(
+            monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[payload])
+        ),
+        patch.object(
+            monitor,
+            "_resolve_issue_closers",
+            new=AsyncMock(return_value={40: ("closer", "https://a/2")}),
+        ),
+    ):
+        event = await monitor.get_latest_activity()
+    assert event is not None
+    assert event.closer_login == "closer"
+
+
+@async_test
+async def test_get_latest_activity_open_has_no_closer(
+    monitor: GitHubMonitor,
+) -> None:
+    with patch.object(
+        monitor, "_fetch_updated_issues", new=AsyncMock(return_value=[_issue()])
+    ):
+        event = await monitor.get_latest_activity()
+    assert event is not None
+    assert event.closer_login == ""

@@ -26,6 +26,7 @@ EVENT_RENDER: dict[str, tuple[str, int, str]] = {
 
 _ISSUE_CLOSE_KINDS: frozenset[str] = frozenset({"ISSUE_COMPLETED", "ISSUE_NOT_PLANNED"})
 _PR_CLOSE_KINDS: frozenset[str] = frozenset({"PR_MERGED", "PR_CLOSED"})
+CLOSE_KINDS: frozenset[str] = _ISSUE_CLOSE_KINDS | _PR_CLOSE_KINDS
 _CLOSED_ACTOR_FRAGMENT: str = (
     "timelineItems(itemTypes:[CLOSED_EVENT],last:1)"
     "{nodes{... on ClosedEvent{actor{login avatarUrl}}}}"
@@ -227,7 +228,15 @@ class GitHubMonitor:
             kind = self._close_kind(issue, is_pr)
         else:
             kind = self._open_kind(is_pr)
-        return self._make_event(kind, issue)
+        event = self._make_event(kind, issue)
+        if kind in CLOSE_KINDS:
+            closer_login, closer_avatar_url = await self._resolve_closer(event)
+            event = replace(
+                event,
+                closer_login=closer_login,
+                closer_avatar_url=closer_avatar_url,
+            )
+        return event
 
     def _toggle_on(self, kind: str) -> bool:
         """Return True if the config toggle for this event kind is enabled."""
@@ -324,6 +333,18 @@ class GitHubMonitor:
             actor = tnodes[-1].get("actor") if tnodes else None
             result[number] = self._closer_from_actor(actor)
         return result
+
+    async def _resolve_closer(self, event: GitHubActivityEvent) -> tuple[str, str]:
+        """Resolve (login, avatar_url) of who closed this event; empty if none."""
+        if event.is_pr and event.kind in _PR_CLOSE_KINDS:
+            details = await self._resolve_pr_close_details(
+                event.number, is_merge=event.kind == "PR_MERGED"
+            )
+            return details.closer_login, details.closer_avatar_url
+        if event.kind in _ISSUE_CLOSE_KINDS:
+            closers = await self._resolve_issue_closers([event.number])
+            return closers.get(event.number, ("", ""))
+        return "", ""
 
     async def get_new_events(self) -> list[GitHubActivityEvent]:
         """Poll, derive, gate, combine linked closes, and return postables."""
