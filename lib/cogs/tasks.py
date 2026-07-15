@@ -327,12 +327,12 @@ class Tasks(commands.Cog):
                         embed.to_dict(),
                     )
 
-                    await channel.send(content="<@everyone>", embed=embed)
+                    await channel.send(content="@everyone", embed=embed)
             else:
                 logger.warning(
                     "Could not find channel with ID %s or it is not a TextChannel",
                     config.CHANNELS.BOT_PLAYGROUND
-                    if config.DRY_RUN
+                    if config.DRY_RUN_YOUTUBE
                     else config.CHANNELS.ANNOUNCEMENTS,
                 )
 

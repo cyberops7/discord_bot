@@ -174,6 +174,43 @@ jobs:
           echo "Running unit tests..."
           uv run inv test-docker --image ${{ env.image }} --tag ${{ env.tag }}
 
+  # Live smoke test of the real YouTube feed URLs. NON-BLOCKING: it depends on
+  # YouTube's RSS endpoint, which is subject to external outages, so a failure
+  # is surfaced as a warning annotation instead of blocking the merge. The
+  # deterministic unit-tests job excludes these `network`-marked tests.
+  live-feed-smoke:
+    name: Live Feed Smoke (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      # Check out the code repository
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      # Install uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      # Install dependencies (including the test group for pytest)
+      - name: Install the project
+        run: uv sync --frozen --group test
+
+      # Run the live network smoke test; warn (not fail) if feeds are down
+      - name: Run live feed smoke test
+        run: |
+          source scripts/logger.sh
+          if uv run pytest -m network --no-cov; then
+            success "Live YouTube feeds reachable."
+          else
+            msg="Live YouTube RSS feeds unreachable (often an external YouTube"
+            msg="$msg outage). Non-blocking; re-check the bot's YouTube monitor"
+            msg="$msg once feeds recover."
+            echo "::warning title=Live feed smoke failed::$msg"
+          fi
+
   # Make sure the container builds and passes vuln scan
   docker-build-scan:
     name: Build and Scan Docker Image

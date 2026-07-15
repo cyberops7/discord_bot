@@ -5,7 +5,7 @@ import importlib
 import logging
 import sys
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import discord
 import feedparser
@@ -1018,8 +1018,8 @@ class TestTasks:
         # Verify the ANNOUNCEMENTS channel was requested (line 192)
         mock_get_channel.assert_called_with(987)
 
-        # Verify channel send was called
-        mock_channel.send.assert_called_once()
+        # Verify channel send was called with an unwrapped @everyone mention
+        mock_channel.send.assert_called_once_with(content="@everyone", embed=ANY)
 
     @async_test
     async def test_monitor_youtube_videos_no_new_videos(
@@ -1116,6 +1116,39 @@ class TestTasks:
         assert len(warning_records) == 1
         assert "Could not find channel with ID" in warning_records[0].message
         assert "or it is not a TextChannel" in warning_records[0].message
+
+    @async_test
+    async def test_monitor_youtube_videos_not_found_warning_uses_youtube_flag(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """The not-found warning reports the channel the selection logic chose.
+
+        Selection keys on DRY_RUN_YOUTUBE, so with DRY_RUN_YOUTUBE=True (→
+        BOT_PLAYGROUND=123) and DRY_RUN=False, the warning must name 123, not
+        the ANNOUNCEMENTS id 987.
+        """
+        mock_config.DRY_RUN = False
+        mock_config.DRY_RUN_YOUTUBE = True
+
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.get_new_videos.return_value = ["video1"]
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        # Channel not found so the warning branch runs
+        tasks_cog.bot.get_channel = MagicMock(return_value=None)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_youtube_videos()
+
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warning_records) == 1
+        message = warning_records[0].getMessage()
+        assert "123" in message
+        assert "987" not in message
 
     @async_test
     async def test_monitor_youtube_videos_channel_wrong_type(

@@ -27,3 +27,4 @@ repos:
     hooks:
       - id: uv-lock
         description: Ensure uv's lock file matches deps in pyproject.toml
+        args: ["--check"]
