@@ -60,6 +60,11 @@ addopts = [
     "--cov-report=html",
     "--cov-report=term-missing",
     "--verbose",
+    # Exclude live external-network tests from the default/CI run — they depend
+    # on third-party uptime (e.g. YouTube's RSS endpoint) and make the gate
+    # non-deterministic. Run them on demand with `pytest -m network`.
+    "-m",
+    "not network",
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -77,6 +82,7 @@ filterwarnings = [
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
 ]
 markers = [
+    "network: test hits a live external network endpoint; excluded from default/CI runs",
     "no_mock_config: exclude the mock_config fixture",
 ]
 #

@@ -151,8 +151,14 @@ class TestGetThumbnailFromEntry:
 class TestInitializeSeenVideos:
     """Tests for _initialize_seen_videos method"""
 
+    @pytest.mark.network
     def test_initialize_seen_videos_real_config(self) -> None:
-        """Test initialization with a real config file"""
+        """Test initialization with a real config file.
+
+        Hits the live YouTube RSS endpoint, so it is marked ``network`` and
+        excluded from the default/CI run (which must be deterministic). Run it
+        on demand with ``pytest -m network`` to smoke-check the real feeds.
+        """
         from lib.config import config  # noqa: PLC0415 imports at the top of the file
 
         for feed_name, feed_url in config.YOUTUBE_FEEDS.items():
