@@ -1118,6 +1118,39 @@ class TestTasks:
         assert "or it is not a TextChannel" in warning_records[0].message
 
     @async_test
+    async def test_monitor_youtube_videos_not_found_warning_uses_youtube_flag(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        tasks_cog: Tasks,
+        mock_config: MagicMock,
+    ) -> None:
+        """The not-found warning reports the channel the selection logic chose.
+
+        Selection keys on DRY_RUN_YOUTUBE, so with DRY_RUN_YOUTUBE=True (→
+        BOT_PLAYGROUND=123) and DRY_RUN=False, the warning must name 123, not
+        the ANNOUNCEMENTS id 987.
+        """
+        mock_config.DRY_RUN = False
+        mock_config.DRY_RUN_YOUTUBE = True
+
+        mock_feed_parser = MagicMock()
+        mock_feed_parser.get_new_videos.return_value = ["video1"]
+        tasks_cog.youtube_feeds = {"test_feed": mock_feed_parser}
+
+        # Channel not found so the warning branch runs
+        tasks_cog.bot.get_channel = MagicMock(return_value=None)
+        tasks_cog.bot.log_bot_event = AsyncMock()
+
+        with caplog.at_level(logging.WARNING):
+            await tasks_cog.monitor_youtube_videos()
+
+        warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warning_records) == 1
+        message = warning_records[0].getMessage()
+        assert "123" in message
+        assert "987" not in message
+
+    @async_test
     async def test_monitor_youtube_videos_channel_wrong_type(
         self,
         caplog: pytest.LogCaptureFixture,
