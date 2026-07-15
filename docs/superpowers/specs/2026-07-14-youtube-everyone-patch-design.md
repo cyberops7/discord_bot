@@ -126,5 +126,40 @@ Per repo convention (CLAUDE.md):
 
 ## Delivery
 
-A dedicated feature branch off `main`, then a PR (not a local merge) with all
-pipeline checks green, per repo standard.
+A dedicated feature branch off `main` (`youtube-everyone-patch`), then a PR (not
+a local merge) with all pipeline checks green, per repo standard.
+
+## Deployment (releasing-to-cluster, Mode A)
+
+This app deploys on **merge to `main`** via GitHub Actions → ghcr → ArgoCD —
+there is **no `git tag` push**, and no k3s-repo edit is needed (the image tag
+lives in the repo's own `kubernetes/discordbot.yaml`, bumped in the PR). Follow
+the `references/discord_bot.md` Mode A flow:
+
+1. **Pre-merge gate:** PR checks (`check-test.yaml`, `check-version`) green.
+2. **Merge the PR to `main`** — this is the release trigger. `publish.yaml`
+   builds the multi-arch image and pushes ghcr tags `:v0.12.1`, `:v0.12`,
+   `:v0`, `:latest`. Poll with `gh run list --branch main` then
+   `gh run watch <id> --exit-status`.
+3. **Image gate:** `crane digest ghcr.io/cyberops7/discord_bot:v0.12.1` must
+   print a `sha256:` — record it. (The in-cluster `check-image-exists` PreSync
+   job also gates on this.)
+4. **ArgoCD verify** (via the `argocd` skill): app `discordbot` Synced to the
+   merge SHA + Healthy. **Known gotcha:** the base manifest is pulled via raw
+   GitHub URL, so a soft `--refresh` can miss the image bump (cached render); a
+   `--hard-refresh` may be needed to flip it OutOfSync and trigger auto-sync.
+5. **Pod smoke:** `kubectl -n discordbot logs deploy/bot --tail=2000` grepped
+   for the startup banner; confirm a clean boot with both monitor tasks up and
+   a "Bot Startup — Version 0.12.1" event in `#bot-logs`. No tracebacks.
+
+## Wrap-up
+
+After the deploy is verified live:
+
+1. **KB update** — run the `kb-update` skill to record the patch in the project
+   note (`~/code/kb/01-Projects/Jim's Garage Discord Bot.md`): the `@everyone`
+   render fix, the three rolled-in backlog items, the GraphQL-thread closure
+   rationale, and the verified-live deploy line for `v0.12.1`.
+2. **TODO updates** — mark the completed backlog items in `docs/TODO.md` (the
+   `uv-lock` "check, not change" CI item) and confirm the closed KB open-thread
+   stays removed.
