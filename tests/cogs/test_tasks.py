@@ -5,7 +5,7 @@ import importlib
 import logging
 import sys
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import discord
 import feedparser
@@ -1018,8 +1018,8 @@ class TestTasks:
         # Verify the ANNOUNCEMENTS channel was requested (line 192)
         mock_get_channel.assert_called_with(987)
 
-        # Verify channel send was called
-        mock_channel.send.assert_called_once()
+        # Verify channel send was called with an unwrapped @everyone mention
+        mock_channel.send.assert_called_once_with(content="@everyone", embed=ANY)
 
     @async_test
     async def test_monitor_youtube_videos_no_new_videos(
