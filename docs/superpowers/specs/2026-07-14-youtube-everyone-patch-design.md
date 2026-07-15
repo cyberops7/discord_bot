@@ -65,23 +65,22 @@ direct subscript access. Line 154 inconsistently uses `.get()`.
 ```python
 # Before
 created = _parse_dt(issue.get("created_at"))
-if created and created > self._started_at:
 # After
 created = _parse_dt(issue["created_at"])
-if created > self._started_at:
 ```
 
-**Coverage note:** With direct access, `_parse_dt(issue["created_at"])` always
-returns a non-`None` datetime for well-formed data, so the falsy-`created`
-branch of `if created and ...` becomes unreachable and would break 100% branch
-coverage. Dropping the now-dead `created and` guard removes that branch. The
-`None` return of `_parse_dt` remains exercised via `closed_at`
-(`github.py:158`, which legitimately stays `.get()` since `closed_at` is
-`NotRequired`/nullable).
+Line 155 (`if created and created > self._started_at:`) is **kept as-is**.
+`_parse_dt` returns `datetime | None`, so the `created and` guard is still
+required for type-safety — dropping it would make pyrefly flag `None >
+datetime`. Coverage is unaffected: coverage.py does not track the `and`
+short-circuit as a separate branch, and the `if` is already exercised both ways
+by the existing `AFTER` (true) and `BEFORE` (false) derive-events tests.
+`closed_at` (`github.py:158`) legitimately stays `.get()` since it is
+`NotRequired`/nullable.
 
-**Test:** Adjust any existing test that fed an issue lacking `created_at` to
-exercise the removed branch; ensure every derive-events test supplies
-`created_at`. Verify full suite still reports 100% branch coverage.
+**Test:** No test change required — existing derive-events tests already supply
+`created_at` and pass unchanged. Verify the full suite still reports 100% branch
+coverage after the edit.
 
 ### 4. Make the `uv-lock` pre-commit hook check-only
 
