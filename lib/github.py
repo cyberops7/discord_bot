@@ -151,7 +151,7 @@ class GitHubMonitor:
         events: list[GitHubActivityEvent] = []
         for issue in issues:
             is_pr = "pull_request" in issue
-            created = _parse_dt(issue.get("created_at"))
+            created = _parse_dt(issue["created_at"])
             if created and created > self._started_at:
                 events.append(self._make_event(self._open_kind(is_pr), issue))
             if issue.get("state") == "closed":
