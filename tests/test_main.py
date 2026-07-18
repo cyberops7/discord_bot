@@ -49,6 +49,7 @@ def test_main_successful_run(
     # Configure the mock config instance to return API_PORT
     mock_config_instance = Mock()
     mock_config_instance.API_PORT = 8000
+    mock_config_instance.API_HOST = "127.0.0.1"
     mock_config_class.return_value = mock_config_instance
 
     # Mock validate_port to return a specific value
@@ -67,7 +68,7 @@ def test_main_successful_run(
     # Verify that uvicorn.run was called with the correct parameters
     mock_uvicorn.assert_called_once_with(
         mocker.ANY,  # app
-        host="0.0.0.0",  # noqa: S104
+        host="127.0.0.1",
         port=8000,
         log_config=None,
     )
@@ -83,6 +84,7 @@ def test_default_port(mocker: MockerFixture, mock_uvicorn: Mock) -> None:
     mock_config_class = mocker.patch("main.Config")
     mock_config_instance = Mock()
     mock_config_instance.API_PORT = 8080  # Default value from config.yaml
+    mock_config_instance.API_HOST = "127.0.0.1"
     mock_config_class.return_value = mock_config_instance
 
     # Mock validate_port to return the default port
@@ -97,7 +99,7 @@ def test_default_port(mocker: MockerFixture, mock_uvicorn: Mock) -> None:
     # Verify that uvicorn.run was called with the default port
     mock_uvicorn.assert_called_once_with(
         mocker.ANY,
-        host="0.0.0.0",  # noqa: S104
+        host="127.0.0.1",
         port=8080,
         log_config=None,
     )
@@ -132,6 +134,7 @@ def test_main_dry_run_mode(
     # Configure the mock config instance with DRY_RUN enabled
     mock_config_instance = Mock()
     mock_config_instance.API_PORT = 8000
+    mock_config_instance.API_HOST = "127.0.0.1"
     mock_config_instance.DRY_RUN = True
     mock_config_class.return_value = mock_config_instance
 
@@ -152,7 +155,7 @@ def test_main_dry_run_mode(
     # Verify that uvicorn.run was called with the correct parameters
     mock_uvicorn.assert_called_once_with(
         mocker.ANY,  # app
-        host="0.0.0.0",  # noqa: S104
+        host="127.0.0.1",
         port=8000,
         log_config=None,
     )
@@ -175,6 +178,7 @@ def test_main_dry_run_disabled(
     # Configure the mock config instance with DRY_RUN disabled
     mock_config_instance = Mock()
     mock_config_instance.API_PORT = 8000
+    mock_config_instance.API_HOST = "127.0.0.1"
     mock_config_instance.DRY_RUN = False
     mock_config_class.return_value = mock_config_instance
 
@@ -194,7 +198,7 @@ def test_main_dry_run_disabled(
     # Verify that uvicorn.run was called with the correct parameters
     mock_uvicorn.assert_called_once_with(
         mocker.ANY,  # app
-        host="0.0.0.0",  # noqa: S104
+        host="127.0.0.1",
         port=8000,
         log_config=None,
     )

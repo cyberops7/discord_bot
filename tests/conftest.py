@@ -86,6 +86,7 @@ def mock_config(
     mock_cfg = MagicMock()
     mock_cfg.BOT_TOKEN = "test_token"  # noqa: S105 hardcoded password
     mock_cfg.EMBED_MAX_LENGTH = 1024
+    mock_cfg.API_HOST = "0.0.0.0"  # noqa: S104
     mock_cfg.CHANNELS.BOT_LOGS = 101
     mock_cfg.CHANNELS.BOT_PLAYGROUND = 123
     mock_cfg.CHANNELS.ANNOUNCEMENTS = 987

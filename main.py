@@ -29,10 +29,9 @@ def main() -> None:
 
     # Start the FastAPI app using Uvicorn. This also starts the bot.
     logger.info("Starting FastAPI server...")
-    # TODO @cyberops7: use os.getenv("API_HOST", "127.0.0.1") instead of 0.0.0.0
     uvicorn.run(
         app,
-        host="0.0.0.0",  # Bind to all network interfaces # noqa: S104
+        host=config.API_HOST,  # Bind address; defaults to 0.0.0.0 in config
         port=api_port,
         log_config=None,
     )

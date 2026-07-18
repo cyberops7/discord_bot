@@ -2,7 +2,7 @@ import logging
 import sys
 from logging import Logger
 
-# TODO @cyberops7: move PORT_MIN/MAX to config
+# Protocol invariants (not deployment config): valid TCP port range.
 PORT_MIN = 0
 PORT_MAX = 65535
 
