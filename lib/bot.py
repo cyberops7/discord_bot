@@ -4,7 +4,6 @@ import asyncio
 import importlib
 import logging
 import time
-from dataclasses import field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -14,6 +13,7 @@ from discord.ext import commands
 
 from lib.bot_log_context import EmbedFieldDict, LogContext
 from lib.config import config
+from lib.message_format import summarize_message
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -254,7 +254,7 @@ class DiscordBot(commands.Bot):
         embed.add_field(name="Level", value=context.level, inline=True)
 
         for embed_field in context.extra_embed_fields:
-            logger.debug("Parsing extra embed field: %s", field)
+            logger.debug("Parsing extra embed field: %s", embed_field)
             if embed_field.get("value"):
                 embed.add_field(
                     name=embed_field.get("name", "Missing embed name"),
@@ -387,18 +387,10 @@ class DiscordBot(commands.Bot):
         Log a moderation action.
         Specify log_channel to duplicate log to a public channel
         """
-        message_snippet = None
-        if message:
-            max_msg_length = 500
-            message_snippet = (
-                f"{message.content[:max_msg_length]}"
-                f"{'...' if len(message.content) > max_msg_length else ''}"
-            )
-
         extra_embed_fields: list[EmbedFieldDict] = [
             {
                 "name": "Message",
-                "value": message_snippet if message else None,
+                "value": summarize_message(message) if message else None,
                 "inline": False,
             },
         ]

@@ -822,10 +822,9 @@ class TestDiscordBot:
         # Reset mock for the next test
         mock_log_to_channel.reset_mock()
 
-        # Test with a long message (more than max_msg_length)
-        long_message = (
-            "x" * 600
-        )  # 600 characters, which exceeds the 500-character limit
+        # A 600-char message is under EMBED_MAX_LENGTH (1024): summarized in
+        # full, no ellipsis.
+        long_message = "x" * 600
         mock_message.content = long_message
 
         result = await discord_bot.log_moderation_action(
@@ -840,11 +839,10 @@ class TestDiscordBot:
         mock_log_to_channel.assert_called_once()
         context = mock_log_to_channel.call_args[0][0]
 
-        # Check that the message was truncated and ellipsis was added
         message_field = context.extra_embed_fields[0]
         assert message_field["name"] == "Message"
-        assert message_field["value"] == long_message[:500] + "..."
-        assert len(message_field["value"]) == 503  # 500 chars + 3 for ellipsis
+        assert message_field["value"] == long_message
+        assert "..." not in message_field["value"]
         assert message_field["inline"] is False
 
     @async_test
