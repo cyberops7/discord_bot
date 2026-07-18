@@ -5,166 +5,138 @@
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Resolve the six `TODO @cyberops7` markers in application code and
-add full-fidelity capture of banned spam messages, with no behavior
-regressions.
+**Goal:** Resolve the six `TODO @cyberops7` markers in application code, add
+full-fidelity capture of banned spam messages, and make startup validation
+actually fail-fast — with no behavior regressions.
 
-**Architecture:** Deployment-tunable values move into `conf/config.yaml`
+**Architecture:** Deployment-tunable `API_HOST` moves into `conf/config.yaml`
 behind the `config` singleton. A new pure module `lib/message_format.py`
-renders a `discord.Message` two ways: a concise safe summary for the
-bot-logs embed and a full-fidelity dump for the on-disk/Loki log. Startup
-becomes fail-fast, and ban handling becomes thread-aware.
+renders a `discord.Message` two ways: a concise safe summary for the bot-logs
+embed and a full single-line dump for the on-disk/Loki log. Cog loading and
+command sync move from the swallowed `on_ready` handler into `setup_hook`,
+wired through the FastAPI lifespan to terminate the process on fatal startup
+errors. Ban handling becomes thread-aware.
 
 **Tech Stack:** Python 3.13, discord.py, FastAPI/uvicorn, pytest +
-pytest-mock + pytest-asyncio, uv, ruff, pyrefly.
+pytest-mock + pytest-asyncio, uv, ruff (`select = ["ALL"]`), pyrefly.
 
 ## Global Constraints
 
 - 100% branch coverage required; every task ends green under
   `uv run invoke test`.
-- All linters/type checks must pass: `uv run invoke check` (ruff, bandit,
-  pyrefly, hadolint, markdownlint, yamllint, shellcheck).
-- Configuration values live in `conf/config.yaml`, accessed via the `config`
-  singleton; env vars override them.
+- Every commit must pass `uv run invoke check` (ruff, bandit, pyrefly,
+  hadolint, markdownlint, yamllint, shellcheck) — no commit may leave a
+  blocking check red.
+- Deployment-tunable values live in `conf/config.yaml` via the `config`
+  singleton; protocol invariants stay module constants.
 - Use `logger`, never `print()`.
-- Version bump every PR: `pyproject.toml` `0.12.1` → `0.13.0`, and the image
-  tag in `kubernetes/discordbot.yaml` `v0.12.1` → `v0.13.0`.
+- Version bump: `pyproject.toml` `0.12.1` → `0.13.0`, and the image tag in
+  `kubernetes/discordbot.yaml` `v0.12.1` → `v0.13.0`.
 - Run `uv run ruff format` before every commit.
 - Any module that reads `config` at call time must be added to the
-  `mock_config` patch list in `tests/conftest.py`, or its tests will hit the
-  real singleton.
+  `mock_config` patch list in `tests/conftest.py`, or its tests hit the real
+  singleton.
 
 ---
 
-### Task 1: Route API_HOST and PORT_MIN/PORT_MAX through config
+### Task 1: Route API_HOST through config; keep port bounds constant
 
 **Files:**
 
 - Modify: `conf/config.yaml`
-- Modify: `lib/utils.py:5-7`
 - Modify: `main.py:32-38`
-- Modify: `tests/conftest.py` (mock_config values + patch list)
-- Test: `tests/test_main.py`, `tests/test_utils.py`
+- Modify: `lib/utils.py:5-7`
+- Modify: `tests/conftest.py` (mock_config value)
+- Test: `tests/test_main.py`
 
 **Interfaces:**
 
-- Produces: `config.API_HOST: str`, `config.PORT_MIN: int`,
-  `config.PORT_MAX: int` available on the config singleton.
+- Produces: `config.API_HOST: str` on the config singleton. Port bounds stay
+  as `lib.utils.PORT_MIN` / `lib.utils.PORT_MAX` module constants.
 
-- [ ] **Step 1: Add config keys**
+- [ ] **Step 1: Add the config key**
 
-In `conf/config.yaml`, add these top-level keys (keep the file alphabetical
-where it already is — `API_HOST` above `API_PORT`, the `PORT_*` keys in the
-`P` position):
+In `conf/config.yaml`, add `API_HOST` directly above the existing
+`API_PORT: 8080`:
 
 ```yaml
 API_HOST: "0.0.0.0"
 ```
 
-(place directly above the existing `API_PORT: 8080`), and:
+- [ ] **Step 2: Add API_HOST to the mock config fixture**
 
-```yaml
-PORT_MAX: 65535
-PORT_MIN: 0
-```
-
-(place them alphabetically, e.g. between `LOG_LEVEL_STDOUT` and `ROLES`).
-
-- [ ] **Step 2: Extend the mock config fixture**
-
-In `tests/conftest.py`, inside `mock_config`, after the
-`mock_cfg.EMBED_MAX_LENGTH = 1024` line add:
+In `tests/conftest.py`, inside `mock_config`, after
+`mock_cfg.EMBED_MAX_LENGTH = 1024` add:
 
 ```python
     mock_cfg.API_HOST = "0.0.0.0"  # noqa: S104
-    mock_cfg.PORT_MIN = 0
-    mock_cfg.PORT_MAX = 65535
 ```
 
-Then extend the `with (...)` patch block to also patch the utils module (add
-this line alongside the other `patch("lib.*.config", mock_cfg)` lines):
+(No `lib.utils.config` patch is needed — `utils.py` keeps module constants and
+does not import `config`.)
+
+- [ ] **Step 3: Update the tests with a distinct host value**
+
+In `tests/test_main.py`, the tests must prove the host now comes from config,
+not a hardcoded literal. In `test_main_successful_run`, after
+`mock_config_instance.API_PORT = 8000` add a **distinct** host:
 
 ```python
-        patch("lib.utils.config", mock_cfg),
+    mock_config_instance.API_HOST = "127.0.0.1"
 ```
 
-- [ ] **Step 3: Update the failing test for main.py host**
-
-In `tests/test_main.py`, in `test_main_successful_run`, add a host attribute
-to the config instance (after `mock_config_instance.API_PORT = 8000`):
+and change that test's `uvicorn.run` assertion from `host="0.0.0.0"` to:
 
 ```python
-    mock_config_instance.API_HOST = "0.0.0.0"  # noqa: S104
+        host="127.0.0.1",
 ```
 
-Leave the existing assertion `host="0.0.0.0"` as-is. Apply the SAME
-`API_HOST` attribute line to `test_default_port` (after its
-`mock_config_instance.API_PORT = 8080`), `test_main_dry_run_mode`, and
-`test_main_dry_run_disabled` (after each `API_PORT = 8000`). Do NOT touch
+Apply the same two edits (`API_HOST = "127.0.0.1"` on the config instance, and
+`host="127.0.0.1"` in the assertion) to `test_default_port`,
+`test_main_dry_run_mode`, and `test_main_dry_run_disabled`. Do NOT touch
 `test_invalid_port` (it raises before uvicorn is called).
 
 - [ ] **Step 4: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_main.py -v`
-Expected: FAIL — `uvicorn.run` called with `host=<Mock ...>` (a Mock, not
-`"0.0.0.0"`), because `main.py` still hardcodes the host and the config
-attribute is now consulted only by the test, not the code.
+Expected: FAIL — `uvicorn.run` is still called with `host="0.0.0.0"` (the
+hardcoded literal), not `"127.0.0.1"`.
 
 - [ ] **Step 5: Point main.py at config.API_HOST**
 
-In `main.py`, replace the TODO comment and the hardcoded host:
+In `main.py`, replace the TODO comment and the hardcoded host. Note the
+`# noqa: S104` is **removed** (no `0.0.0.0` literal remains in the code, so the
+directive would trip `RUF100`):
 
 ```python
     # Start the FastAPI app using Uvicorn. This also starts the bot.
     logger.info("Starting FastAPI server...")
     uvicorn.run(
         app,
-        host=config.API_HOST,  # Bind address; default 0.0.0.0 # noqa: S104
+        host=config.API_HOST,  # Bind address; defaults to 0.0.0.0 in config
         port=api_port,
         log_config=None,
     )
 ```
 
-Note `main.py` already builds `config = Config()` locally in `main()`; use
-that `config` variable (it is in scope). No new import needed.
+`main()` already builds `config = Config()` locally; use that variable. No new
+import needed.
 
-- [ ] **Step 6: Point utils.py at config**
+- [ ] **Step 6: Drop the port-bounds TODO in utils.py**
 
-In `lib/utils.py`, remove the TODO and the two module constants, and read
-from config instead:
+In `lib/utils.py`, remove the TODO comment and add a clarifying one; the
+constants stay:
 
 ```python
-import logging
-import sys
-from logging import Logger
-
-from lib.config import config
-
-logger: Logger = logging.getLogger(__name__)
-
-
-def ensure_valid_port(port: int) -> int:
-    """Raise TypeError or ValueError if a port is invalid."""
-    # noinspection PyUnreachableCode
-    if not isinstance(port, int):
-        msg = f"Port must be an integer, but got {type(port).__name__}: {port}"
-        raise TypeError(msg)
-    if not (config.PORT_MIN <= port <= config.PORT_MAX):
-        msg = (
-            f"Port {port} is not in the valid range "
-            f"{config.PORT_MIN}-{config.PORT_MAX}"
-        )
-        raise ValueError(msg)
-    return port
+# Protocol invariants (not deployment config): valid TCP port range.
+PORT_MIN = 0
+PORT_MAX = 65535
 ```
 
-Leave `validate_port` unchanged below it.
-
-- [ ] **Step 7: Run the full suite for the touched files**
+- [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_main.py tests/test_utils.py -v`
-Expected: PASS. `test_utils` assertions (`... valid range 0-65535`) still hold
-because the mock config supplies `PORT_MIN=0`, `PORT_MAX=65535`.
+Expected: PASS. `test_utils` is unchanged (constants unchanged).
 
 - [ ] **Step 8: Format, check, commit**
 
@@ -173,7 +145,7 @@ uv run ruff format
 uv run invoke check
 git add conf/config.yaml lib/utils.py main.py tests/conftest.py \
   tests/test_main.py
-git commit -m "feat(config): route API_HOST and port bounds through config"
+git commit -m "feat(config): route API_HOST through config"
 ```
 
 ---
@@ -193,11 +165,11 @@ git commit -m "feat(config): route API_HOST and port bounds through config"
      None) -> str` — concise, always non-empty, no attachment URLs, truncated
      to `max_length` (defaults to `config.EMBED_MAX_LENGTH`).
    - `describe_message_full(message: discord.Message, max_content: int = 4000)
-     -> str` — full multi-line dump: id/type/flags/jump_url, full content
-     (capped at `max_content`), and every attachment (filename, content_type,
-     size, url), embed (`to_dict()`), and sticker (name, id).
+     -> str` — full single-line dump: id/type/flags/jump_url, capped content,
+     and every attachment (filename, content_type, size, url), embed
+     (`to_dict()`), sticker (name, id), poll, and forwarded snapshot.
 
-- [ ] **Step 1: Extend conftest for the new module and message payloads**
+- [ ] **Step 1: Extend conftest for the new module and payload attributes**
 
 In `tests/conftest.py`, add to the `with (...)` patch block:
 
@@ -206,13 +178,16 @@ In `tests/conftest.py`, add to the `with (...)` patch block:
 ```
 
 And in the `mock_message` fixture, after `message.content = "test message"`,
-add empty payload collections so the summarizer/describer see no
-attachments/embeds/stickers by default:
+add empty/None payload attributes so the formatters see no
+attachments/embeds/stickers/poll/snapshots by default (a `spec=Message` mock
+otherwise returns truthy `MagicMock`s for `poll`/`message_snapshots`):
 
 ```python
     message.attachments = []
     message.embeds = []
     message.stickers = []
+    message.poll = None
+    message.message_snapshots = []
 ```
 
 - [ ] **Step 2: Write the failing tests**
@@ -234,6 +209,8 @@ def _make_message(
     attachments: list[MagicMock] | None = None,
     embeds: list[MagicMock] | None = None,
     stickers: list[MagicMock] | None = None,
+    poll: MagicMock | None = None,
+    snapshots: list[MagicMock] | None = None,
 ) -> MagicMock:
     """Build a mock discord.Message with the given payloads."""
     message = MagicMock(spec=discord.Message)
@@ -241,6 +218,8 @@ def _make_message(
     message.attachments = attachments or []
     message.embeds = embeds or []
     message.stickers = stickers or []
+    message.poll = poll
+    message.message_snapshots = snapshots or []
     message.id = 123
     message.jump_url = "https://discord.com/channels/1/2/3"
     message.type = discord.MessageType.default
@@ -271,54 +250,73 @@ def _embed(title: str) -> MagicMock:
 
 
 def test_summarize_text_only() -> None:
-    message = _make_message(content="hello world")
-    assert summarize_message(message) == "hello world"
+    assert summarize_message(_make_message(content="hello world")) == (
+        "hello world"
+    )
 
 
 def test_summarize_attachment_only_no_url() -> None:
-    message = _make_message(attachments=[_attachment("pic.png")])
-    result = summarize_message(message)
+    result = summarize_message(
+        _make_message(attachments=[_attachment("pic.png")])
+    )
     assert result == "[1 attachment(s): pic.png]"
     assert "https://" not in result
 
 
 def test_summarize_sticker_only() -> None:
-    message = _make_message(stickers=[_sticker("wave")])
-    assert summarize_message(message) == "[sticker: wave]"
+    assert summarize_message(
+        _make_message(stickers=[_sticker("wave")])
+    ) == "[sticker: wave]"
 
 
 def test_summarize_embed_only() -> None:
-    message = _make_message(embeds=[_embed("spam")])
-    assert summarize_message(message) == "[1 embed(s)]"
+    assert summarize_message(
+        _make_message(embeds=[_embed("spam")])
+    ) == "[1 embed(s)]"
+
+
+def test_summarize_poll_marker() -> None:
+    poll = MagicMock()
+    assert summarize_message(_make_message(poll=poll)) == "[poll]"
+
+
+def test_summarize_forwarded_marker() -> None:
+    assert summarize_message(
+        _make_message(snapshots=[MagicMock()])
+    ) == "[1 forwarded message(s)]"
 
 
 def test_summarize_combined() -> None:
-    message = _make_message(
-        content="look", attachments=[_attachment("a.jpg")]
+    result = summarize_message(
+        _make_message(content="look", attachments=[_attachment("a.jpg")])
     )
-    assert summarize_message(message) == "look\n[1 attachment(s): a.jpg]"
+    assert result == "look\n[1 attachment(s): a.jpg]"
 
 
 def test_summarize_empty() -> None:
-    message = _make_message()
-    assert summarize_message(message) == "[no displayable content]"
+    assert summarize_message(_make_message()) == "[no displayable content]"
 
 
 def test_summarize_truncates_to_max_length() -> None:
-    message = _make_message(content="x" * 100)
-    result = summarize_message(message, max_length=10)
+    result = summarize_message(_make_message(content="x" * 100), max_length=10)
     assert len(result) == 10
     assert result.endswith("...")
 
 
-def test_describe_full_includes_all_payloads() -> None:
-    message = _make_message(
-        content="payload",
-        attachments=[_attachment("evil.exe")],
-        embeds=[_embed("phish")],
-        stickers=[_sticker("boom")],
+def test_describe_full_is_single_line_with_all_payloads() -> None:
+    poll = MagicMock()
+    poll.question = "vote?"
+    result = describe_message_full(
+        _make_message(
+            content="payload",
+            attachments=[_attachment("evil.exe")],
+            embeds=[_embed("phish")],
+            stickers=[_sticker("boom")],
+            poll=poll,
+            snapshots=[MagicMock()],
+        )
     )
-    result = describe_message_full(message)
+    assert "\n" not in result
     assert "content='payload'" in result
     assert "filename='evil.exe'" in result
     assert "https://cdn.example/evil.exe" in result
@@ -326,11 +324,20 @@ def test_describe_full_includes_all_payloads() -> None:
     assert "{'title': 'phish'}" in result
     assert "name='boom'" in result
     assert "id=123" in result
+    assert "poll='vote?'" in result
+    assert "forwarded=1" in result
+
+
+def test_describe_full_content_repr_escapes_newlines() -> None:
+    result = describe_message_full(_make_message(content="a\nb"))
+    assert "\n" not in result
+    assert "'a\\nb'" in result
 
 
 def test_describe_full_caps_content() -> None:
-    message = _make_message(content="y" * 5000)
-    result = describe_message_full(message, max_content=100)
+    result = describe_message_full(
+        _make_message(content="y" * 5000), max_content=100
+    )
     assert "truncated 5000 chars" in result
     assert "y" * 5000 not in result
 ```
@@ -347,13 +354,9 @@ Create `lib/message_format.py`:
 ```python
 """Render Discord messages for logging and moderation embeds."""
 
-import logging
-
 import discord
 
 from lib.config import config
-
-logger: logging.Logger = logging.getLogger(__name__)
 
 
 def summarize_message(
@@ -363,8 +366,7 @@ def summarize_message(
     Build a concise, safe one-field summary of a message for a log embed.
 
     Always returns a non-empty string so the embed field is never suppressed.
-    Attachment URLs are intentionally omitted (the message is deleted within a
-    day, and the link should not be clickable in the log channel).
+    Attachment URLs are intentionally omitted.
     """
     limit = max_length if max_length is not None else config.EMBED_MAX_LENGTH
     parts: list[str] = []
@@ -384,6 +386,13 @@ def summarize_message(
     if message.embeds:
         parts.append(f"[{len(message.embeds)} embed(s)]")
 
+    if getattr(message, "poll", None) is not None:
+        parts.append("[poll]")
+
+    snapshots = getattr(message, "message_snapshots", None) or []
+    if snapshots:
+        parts.append(f"[{len(snapshots)} forwarded message(s)]")
+
     summary = "\n".join(parts) if parts else "[no displayable content]"
 
     if len(summary) > limit:
@@ -395,8 +404,9 @@ def describe_message_full(
     message: discord.Message, max_content: int = 4000
 ) -> str:
     """
-    Build a full-fidelity, multi-line description of a message for the log
-    file. Captures every payload type so nothing is lost for later review.
+    Build a full-fidelity, single-line description of a message for the log
+    file. `content` and payload fields are repr-escaped so attacker-controlled
+    newlines cannot fragment the log line (kept single-line for Loki).
     """
     content = message.content
     if len(content) > max_content:
@@ -404,7 +414,7 @@ def describe_message_full(
             f"{content[:max_content]}... (truncated {len(content)} chars)"
         )
 
-    lines: list[str] = [
+    parts: list[str] = [
         f"id={message.id}",
         f"type={message.type!r}",
         f"flags={message.flags!r}",
@@ -413,25 +423,33 @@ def describe_message_full(
     ]
 
     for i, attachment in enumerate(message.attachments):
-        lines.append(
-            f"attachment[{i}]: filename={attachment.filename!r} "
-            f"content_type={attachment.content_type!r} "
-            f"size={attachment.size} url={attachment.url}"
+        parts.append(
+            f"attachment[{i}]=(filename={attachment.filename!r}, "
+            f"content_type={attachment.content_type!r}, "
+            f"size={attachment.size}, url={attachment.url})"
         )
 
     for i, embed in enumerate(message.embeds):
-        lines.append(f"embed[{i}]={embed.to_dict()}")
+        parts.append(f"embed[{i}]={embed.to_dict()}")
 
     for i, sticker in enumerate(message.stickers):
-        lines.append(f"sticker[{i}]: name={sticker.name!r} id={sticker.id}")
+        parts.append(f"sticker[{i}]=(name={sticker.name!r}, id={sticker.id})")
 
-    return "\n".join(lines)
+    poll = getattr(message, "poll", None)
+    if poll is not None:
+        parts.append(f"poll={getattr(poll, 'question', poll)!r}")
+
+    snapshots = getattr(message, "message_snapshots", None) or []
+    if snapshots:
+        parts.append(f"forwarded={len(snapshots)}")
+
+    return " | ".join(parts)
 ```
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_message_format.py -v`
-Expected: PASS (all 9 tests).
+Expected: PASS (all 13 tests).
 
 - [ ] **Step 6: Format, check, commit**
 
@@ -448,7 +466,8 @@ git commit -m "feat(logging): add message-format helpers for moderation"
 
 **Files:**
 
-- Modify: `lib/bot.py` (imports + `log_moderation_action` message field)
+- Modify: `lib/bot.py` (import, `log_moderation_action`, and the pre-existing
+  `_send_log_embed` debug-log bug)
 - Test: `tests/test_bot.py`
   (`test_log_moderation_action_with_message`)
 
@@ -459,19 +478,16 @@ git commit -m "feat(logging): add message-format helpers for moderation"
 - [ ] **Step 1: Update the failing test**
 
 In `tests/test_bot.py`, rewrite the long-message section of
-`test_log_moderation_action_with_message` (currently asserting a 500-char
-truncation) to reflect the summarizer's `EMBED_MAX_LENGTH` (1024) limit. The
-mock config sets `EMBED_MAX_LENGTH = 1024`, so a 600-char message is NOT
-truncated. Replace the block starting at
-`# Test with a long message (more than max_msg_length)` through the end of the
-method with:
+`test_log_moderation_action_with_message` — the summarizer truncates to
+`EMBED_MAX_LENGTH` (1024), so a 600-char message is not truncated. Replace the
+block from `# Test with a long message ...` to the end of the method with:
 
 ```python
         # Reset mock for the next test
         mock_log_to_channel.reset_mock()
 
-        # A 600-char message is under EMBED_MAX_LENGTH (1024), so it is
-        # summarized in full with no ellipsis.
+        # A 600-char message is under EMBED_MAX_LENGTH (1024): summarized in
+        # full, no ellipsis.
         long_message = "x" * 600
         mock_message.content = long_message
 
@@ -497,41 +513,20 @@ method with:
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_bot.py -k log_moderation_action_with_message -v`
-Expected: FAIL — value still truncated to 503 chars with `...`, because
-`log_moderation_action` still uses the inline 500-char snippet.
+Expected: FAIL — value still truncated to 503 chars with `...`.
 
-- [ ] **Step 3: Wire in the summarizer**
+- [ ] **Step 3: Wire in the summarizer and fix the debug-log bug**
 
-In `lib/bot.py`, add the import near the other `from lib.*` imports:
-
-```python
-from lib.message_format import describe_message_full, summarize_message
-```
-
-(The `describe_message_full` import is consumed in Task 5; import both now.)
-
-Then in `log_moderation_action`, replace the `message_snippet` block and the
-`extra_embed_fields` value. Delete these lines:
+In `lib/bot.py`, add the import near the other `from lib.*` imports (import
+only `summarize_message` here; `describe_message_full` is added in Task 5 where
+it is first used, to avoid an `F401` unused-import failure):
 
 ```python
-        message_snippet = None
-        if message:
-            max_msg_length = 500
-            message_snippet = (
-                f"{message.content[:max_msg_length]}"
-                f"{'...' if len(message.content) > max_msg_length else ''}"
-            )
-
-        extra_embed_fields: list[EmbedFieldDict] = [
-            {
-                "name": "Message",
-                "value": message_snippet if message else None,
-                "inline": False,
-            },
-        ]
+from lib.message_format import summarize_message
 ```
 
-Replace with:
+In `log_moderation_action`, delete the `message_snippet` block and the
+`max_msg_length` logic, and set the field value from the summarizer:
 
 ```python
         extra_embed_fields: list[EmbedFieldDict] = [
@@ -541,6 +536,14 @@ Replace with:
                 "inline": False,
             },
         ]
+```
+
+In `_send_log_embed`, fix the pre-existing debug log that passes the imported
+`field` function instead of the loop variable:
+
+```python
+        for embed_field in context.extra_embed_fields:
+            logger.debug("Parsing extra embed field: %s", embed_field)
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -563,20 +566,20 @@ git commit -m "feat(moderation): summarize triggering message in ban embed"
 
 **Files:**
 
-- Modify: `lib/bot.py` (`ban_spammer` channel guard + annotation,
+- Modify: `lib/bot.py` (`on_message` gate, `ban_spammer` guard + annotation,
   `log_moderation_action` signature)
 - Modify: `lib/bot_log_context.py` (`LogContext.channel` type)
-- Test: `tests/test_bot.py` (update not-text-channel test, add thread test)
+- Test: `tests/test_bot.py`
 
 **Interfaces:**
 
-- Produces: `ban_spammer` accepts messages whose channel is a
-  `discord.TextChannel` or `discord.Thread`.
+- Produces: messages in a thread under `#mousetrap` reach `ban_spammer`, which
+  accepts a `discord.TextChannel | discord.Thread`.
 
 - [ ] **Step 1: Update / add the failing tests**
 
-In `tests/test_bot.py`, update `test_ban_spammer_not_text_channel`'s
-assertion string to the new wording:
+In `tests/test_bot.py`, update `test_ban_spammer_not_text_channel`'s assertion
+string:
 
 ```python
         assert caplog.records[0].message == (
@@ -585,7 +588,7 @@ assertion string to the new wording:
         )
 ```
 
-Then add a new test directly after it that a thread channel IS processed:
+Add a test that a thread channel IS processed by `ban_spammer`:
 
 ```python
     @async_test
@@ -610,9 +613,7 @@ Then add a new test directly after it that a thread channel IS processed:
         mocked_ban = mocker.patch.object(
             mock_user, "ban", new_callable=AsyncMock
         )
-        mocked_log = mocker.patch(
-            "lib.bot.DiscordBot.log_moderation_action"
-        )
+        mocked_log = mocker.patch("lib.bot.DiscordBot.log_moderation_action")
 
         await discord_bot.ban_spammer("Test ban reason", mock_message)
 
@@ -620,20 +621,69 @@ Then add a new test directly after it that a thread channel IS processed:
         mocked_log.assert_called_once()
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+Add a test that a thread under #mousetrap routes through `on_message` to
+`ban_spammer`:
 
-Run:
+```python
+    @async_test
+    async def test_on_message_mousetrap_thread(
+        self,
+        mocker: MockerFixture,
+        discord_bot: DiscordBot,
+        mock_message: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """A message in a thread under #mousetrap triggers ban handling."""
+        thread = mocker.MagicMock(spec=discord.Thread)
+        thread.id = 777  # not the mousetrap id
+        thread.parent_id = mock_config.CHANNELS.MOUSETRAP
+        mock_message.channel = thread
+        mocked_ban_spammer = mocker.patch(
+            "lib.bot.DiscordBot.ban_spammer", AsyncMock(return_value=None)
+        )
+        mocker.patch("lib.bot.DiscordBot.process_commands")
 
-```bash
-uv run pytest tests/test_bot.py -k "not_text_channel or thread_channel" -v
+        await discord_bot.on_message(mock_message)
+
+        mocked_ban_spammer.assert_called_once()
 ```
 
-Expected: FAIL — `test_ban_spammer_thread_channel` skips (channel not a
-`TextChannel`), and `not_text_channel` fails on the new assertion string.
+- [ ] **Step 2: Run the tests to verify they fail**
 
-- [ ] **Step 3: Widen the channel guard and annotations**
+Run: `uv run pytest tests/test_bot.py -k "thread or not_text_channel" -v`
+Expected: FAIL — thread messages are skipped and the `not_text_channel`
+wording assertion is new.
 
-In `lib/bot.py` `ban_spammer`, replace the TODO + guard:
+- [ ] **Step 3: Widen the on_message gate**
+
+In `lib/bot.py` `on_message`, replace the mousetrap gate so it matches the
+channel itself or a thread whose parent is #mousetrap:
+
+```python
+        # Ban spammers - no one should post in #mousetrap or its threads.
+        channel = message.channel
+        in_mousetrap = channel.id == config.CHANNELS.MOUSETRAP or (
+            isinstance(channel, discord.Thread)
+            and channel.parent_id == config.CHANNELS.MOUSETRAP
+        )
+        if in_mousetrap:
+            logger.warning(
+                "Message received in #mousetrap from %s (%s), "
+                "processing for ban",
+                message.author.display_name,
+                message.author,
+            )
+            ban_reason = "Message detected in #mousetrap."
+            await self.ban_spammer(ban_reason, message)
+```
+
+(This also replaces the old two-line `Received message ... : content` +
+`Message object: <repr>` logging with a single breadcrumb; the full payload is
+captured in `ban_spammer` in Task 5.)
+
+- [ ] **Step 4: Widen the channel guard and annotations**
+
+In `ban_spammer`, replace the TODO + guard:
 
 ```python
         if not isinstance(
@@ -655,88 +705,16 @@ In `log_moderation_action`'s signature, widen the `channel` parameter:
         channel: discord.TextChannel | discord.Thread | None = None,
 ```
 
-- [ ] **Step 4: Widen LogContext.channel**
-
-In `lib/bot_log_context.py`, widen the field type:
+In `lib/bot_log_context.py`, widen the field:
 
 ```python
     channel: discord.TextChannel | discord.Thread | None = None
 ```
 
-- [ ] **Step 5: Run tests + type check to verify pass**
+- [ ] **Step 5: Update the mousetrap breadcrumb test**
 
-Run: `uv run pytest tests/test_bot.py -k ban_spammer -v && uv run pyrefly check`
-Expected: PASS and no type errors. (`_send_log_embed` uses only
-`channel.mention` and `channel.id`, both present on `Thread`.)
-
-- [ ] **Step 6: Format, check, commit**
-
-```bash
-uv run ruff format
-uv run invoke check
-git add lib/bot.py lib/bot_log_context.py tests/test_bot.py
-git commit -m "feat(moderation): ban spammers posting in threads"
-```
-
----
-
-### Task 5: Capture full payload on every ban + trim on_message
-
-**Files:**
-
-- Modify: `lib/bot.py` (`ban_spammer` verbose dump, drop #general-chat TODO,
-  `on_message` breadcrumb)
-- Test: `tests/test_bot.py` (ban_spammer log-count tests, on_message test)
-
-**Interfaces:**
-
-- Consumes: `describe_message_full` from Task 2 (imported in Task 3).
-
-- [ ] **Step 1: Update the failing tests (ban_spammer log counts)**
-
-The verbose dump adds one leading `WARNING` record to every ban_spammer path
-that reaches processing. Update these four tests in `tests/test_bot.py`:
-
-`test_ban_spammer_privileged_role`: change count to 3 and insert a leading
-assertion; shift the existing records to indices 1 and 2:
-
-```python
-        assert len(caplog.records) == 3
-        assert caplog.records[0].levelname == "WARNING"
-        assert caplog.records[0].message.startswith("Full message payload:")
-        assert caplog.records[1].levelname == "INFO"
-        assert (
-            caplog.records[1].message
-            == f"Processing potential spam from user {mock_user.display_name} "
-            f"({mock_user}) in channel #{mock_message.channel.name}"
-        )
-        assert caplog.records[2].levelname == "INFO"
-        assert (
-            caplog.records[2].message
-            == f"User {mock_user.display_name} ({mock_user}) has privileged "
-            f"role, not banning"
-        )
-```
-
-`test_ban_spammer_success`: change count to 4, insert leading payload
-assertion at index 0, and shift the three existing assertions to indices
-1, 2, 3 (same messages, `+1` index each).
-
-`test_ban_spammer_forbidden` and `test_ban_spammer_http_exception`: change
-count to 4, insert the leading payload assertion at index 0, and shift the
-three existing assertions to indices 1, 2, 3.
-
-For all four, the inserted assertion is:
-
-```python
-        assert caplog.records[0].levelname == "WARNING"
-        assert caplog.records[0].message.startswith("Full message payload:")
-```
-
-- [ ] **Step 2: Update the on_message mousetrap test**
-
-Replace the body assertions of `test_on_message_mousetrap` (the collapsed
-breadcrumb yields exactly one record):
+In `tests/test_bot.py`, replace the assertions in `test_on_message_mousetrap`
+(the collapsed breadcrumb is one record):
 
 ```python
         mocked_ban_spammer.assert_called_once()
@@ -750,30 +728,88 @@ breadcrumb yields exactly one record):
         )
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [ ] **Step 6: Run tests + type check**
 
 Run:
 
 ```bash
-uv run pytest tests/test_bot.py -k "ban_spammer or on_message_mousetrap" -v
+uv run pytest tests/test_bot.py -k "thread or mousetrap or ban_spammer" -v
+uv run pyrefly check
 ```
 
-Expected: FAIL — record counts still at the old values; no
-"Full message payload:" line; old mousetrap wording.
+Expected: PASS and no type errors (`_send_log_embed`/`_send_log_text` use only
+`channel.mention`/`.id`, both on `Thread`).
 
-- [ ] **Step 4: Add the verbose dump in ban_spammer**
+- [ ] **Step 7: Format, check, commit**
 
-In `lib/bot.py` `ban_spammer`, immediately after the
-`channel: ... = message.channel` line and before the
-`logger.info("Processing potential spam ...")` call, add:
+```bash
+uv run ruff format
+uv run invoke check
+git add lib/bot.py lib/bot_log_context.py tests/test_bot.py
+git commit -m "feat(moderation): ban spammers posting in mousetrap threads"
+```
+
+---
+
+### Task 5: Capture full payload on every ban
+
+**Files:**
+
+- Modify: `lib/bot.py` (`ban_spammer` verbose dump, drop general-chat TODO)
+- Test: `tests/test_bot.py` (ban_spammer log-count tests)
+
+**Interfaces:**
+
+- Consumes: `describe_message_full` from Task 2.
+
+- [ ] **Step 1: Update the failing tests (ban_spammer log counts)**
+
+The dump is logged at INFO at the top of `ban_spammer`, before the guards, so
+it adds one leading INFO record to **every** ban_spammer path. In
+`tests/test_bot.py`, insert this leading assertion (index 0) into each of the
+tests below and bump each record count by 1:
 
 ```python
-        logger.warning(
-            "Full message payload:\n%s", describe_message_full(message)
+        assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+```
+
+- `test_ban_spammer_not_member_instance`: count `1` → `2`; the existing
+  "author is not a Member" assertion shifts to `caplog.records[1]`.
+- `test_ban_spammer_not_text_channel`: count `1` → `2`; the "not a
+  TextChannel or Thread" assertion shifts to `caplog.records[1]`.
+- `test_ban_spammer_privileged_role`: count `2` → `3`; existing records shift
+  to indices `1` and `2`.
+- `test_ban_spammer_success`: count `3` → `4`; existing records shift to
+  indices `1`, `2`, `3`.
+- `test_ban_spammer_forbidden`: count `3` → `4`; existing records shift to
+  indices `1`, `2`, `3`.
+- `test_ban_spammer_http_exception`: count `3` → `4`; existing records shift
+  to indices `1`, `2`, `3`.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_bot.py -k ban_spammer -v`
+Expected: FAIL — no "Spam ban payload" record; counts one short.
+
+- [ ] **Step 3: Add the verbose dump and the import**
+
+In `lib/bot.py`, extend the message-format import from Task 3:
+
+```python
+from lib.message_format import describe_message_full, summarize_message
+```
+
+At the very top of `ban_spammer` (before the `isinstance(message.author, ...)`
+guard), add:
+
+```python
+        logger.info(
+            "Spam ban payload | %s", describe_message_full(message)
         )
 ```
 
-- [ ] **Step 5: Drop the #general-chat TODO**
+- [ ] **Step 4: Drop the general-chat TODO**
 
 In `ban_spammer`, remove the line:
 
@@ -781,32 +817,14 @@ In `ban_spammer`, remove the line:
             # TODO @cyberops7: also log to #general-chat
 ```
 
-(Leave the `log_moderation_action(...)` call that follows it unchanged.)
+(Leave the `log_moderation_action(...)` call unchanged.)
 
-- [ ] **Step 6: Collapse the on_message mousetrap logging**
+- [ ] **Step 5: Run the tests to verify they pass**
 
-In `lib/bot.py` `on_message`, replace the two log lines (the
-`"Received message from ..."` warning and the `"Message object: %s"` warning)
-with a single breadcrumb:
-
-```python
-        if message.channel.id == config.CHANNELS.MOUSETRAP:
-            logger.warning(
-                "Message received in #mousetrap from %s (%s), "
-                "processing for ban",
-                message.author.display_name,
-                message.author,
-            )
-            ban_reason = "Message detected in #mousetrap."
-            await self.ban_spammer(ban_reason, message)
-```
-
-- [ ] **Step 7: Run the tests to verify they pass**
-
-Run: `uv run pytest tests/test_bot.py -k "ban_spammer or on_message" -v`
+Run: `uv run pytest tests/test_bot.py -k ban_spammer -v`
 Expected: PASS.
 
-- [ ] **Step 8: Format, check, commit**
+- [ ] **Step 6: Format, check, commit**
 
 ```bash
 uv run ruff format
@@ -817,211 +835,392 @@ git commit -m "feat(moderation): log full spam payload on every ban"
 
 ---
 
-### Task 6: Fail-fast startup for cog load and command sync
+### Task 6: Move startup validation into setup_hook
 
 **Files:**
 
-- Modify: `lib/bot.py` (`on_ready` cog-load + tree-sync wrapping)
-- Test: `tests/test_bot.py` (two new tests)
+- Modify: `lib/bot.py` (`setup_hook` new, `on_ready` trimmed)
+- Test: `tests/test_bot.py`
 
 **Interfaces:**
 
-- Produces: `on_ready` re-raises after logging if `_load_cogs()` or
-  `self.tree.sync()` fails.
+- Produces: `DiscordBot.setup_hook()` loads cogs (fail-hard) and syncs commands
+  (tolerating `discord.HTTPException`). `on_ready` no longer loads cogs or
+  syncs.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing setup_hook tests**
 
-Add two tests to `tests/test_bot.py` near the other `on_ready` tests:
+Add to `tests/test_bot.py`:
 
 ```python
     @async_test
-    async def test_on_ready_cog_load_failure_raises(
+    async def test_setup_hook_loads_cogs_and_syncs(
         self,
         mocker: MockerFixture,
         caplog: pytest.LogCaptureFixture,
         discord_bot: DiscordBot,
-        mock_config: MagicMock,
     ) -> None:
-        """on_ready re-raises and logs if cog loading fails."""
-        mocker.patch.object(
-            discord_bot, "_get_log_channel", return_value=mock_config.LOG_CHANNEL
+        """setup_hook loads cogs and syncs commands."""
+        mock_load = mocker.patch.object(discord_bot, "_load_cogs")
+        mock_sync = mocker.patch.object(
+            discord_bot.tree, "sync", return_value=[]
         )
-        mocker.patch("lib.bot.DiscordBot.log_bot_event")
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.setup_hook()
+
+        mock_load.assert_called_once()
+        mock_sync.assert_called_once()
+        assert any("Synced 0 commands" in r.message for r in caplog.records)
+
+    @async_test
+    async def test_setup_hook_cog_failure_raises(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """setup_hook re-raises (crashes startup) when cog loading fails."""
         mocker.patch.object(
             discord_bot, "_load_cogs", side_effect=RuntimeError("boom")
         )
+        mocker.patch.object(discord_bot.tree, "sync")
 
         with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError):
-            await discord_bot.on_ready()
+            await discord_bot.setup_hook()
 
         assert any(
-            "Failed to load cogs" in record.message
-            for record in caplog.records
+            "Failed to load cogs" in r.message for r in caplog.records
         )
 
     @async_test
-    async def test_on_ready_sync_failure_raises(
+    async def test_setup_hook_sync_http_error_tolerated(
         self,
         mocker: MockerFixture,
         caplog: pytest.LogCaptureFixture,
         discord_bot: DiscordBot,
-        mock_config: MagicMock,
     ) -> None:
-        """on_ready re-raises and logs if command sync fails."""
-        mocker.patch.object(
-            discord_bot, "_get_log_channel", return_value=mock_config.LOG_CHANNEL
-        )
-        mocker.patch("lib.bot.DiscordBot.log_bot_event")
+        """A transient command-sync HTTP error is logged, not raised."""
         mocker.patch.object(discord_bot, "_load_cogs")
         mocker.patch.object(
-            discord_bot.tree, "sync", side_effect=RuntimeError("sync boom")
+            discord_bot.tree,
+            "sync",
+            side_effect=discord.HTTPException(MagicMock(), "429"),
         )
 
-        with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError):
-            await discord_bot.on_ready()
+        with caplog.at_level(logging.INFO):
+            await discord_bot.setup_hook()  # must NOT raise
 
         assert any(
-            "Failed to sync commands" in record.message
-            for record in caplog.records
+            "Command sync failed" in r.message for r in caplog.records
         )
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [ ] **Step 2: Update the existing on_ready tests**
 
-Run: `uv run pytest tests/test_bot.py -k "cog_load_failure or sync_failure" -v`
-Expected: FAIL — the exception propagates without the expected log message
-(no `try/except` yet), so the `any(...)` assertion fails.
+`on_ready` no longer loads cogs or syncs, so those logs/calls move out.
 
-- [ ] **Step 3: Wrap the two startup calls**
-
-In `lib/bot.py` `on_ready`, replace the two TODO comments and their calls.
-For cog loading:
+In `test_on_ready`: remove the `_load_cogs` and `tree.sync` mocks and their
+`assert_called_once()` calls, and the "Syncing commands", "Synced 0 commands",
+and "Registered commands" record assertions. The remaining records are exactly
+three:
 
 ```python
-        # Dynamically load all cogs
+        with caplog.at_level(logging.INFO):
+            await discord_bot.on_ready()
+
+        assert len(caplog.records) == 3
+        assert "Bot is ready" in caplog.records[0].message
+        assert "We have logged in as TestBot" in caplog.records[1].message
+        assert (
+            "Performing initial startup procedures..."
+            in caplog.records[2].message
+        )
+        mock_log_bot_event.assert_called_once()
+```
+
+In `test_on_ready_no_default_channel`: remove the `_load_cogs`/`tree.sync`
+mocks and their assertions; change the count from `7` to `4`; the
+"Could not find log channel" WARNING is now `caplog.records[3]`.
+
+`test_on_ready_no_user` and `test_on_ready_already_started` are unaffected
+(they return before the cog/sync code either way; the latter's
+`mock_load_cogs.assert_not_called()` / `mock_sync_commands.assert_not_called()`
+remain true).
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_bot.py -k "setup_hook or on_ready" -v`
+Expected: FAIL — `setup_hook` does not exist yet; `on_ready` still emits the
+sync logs.
+
+- [ ] **Step 4: Add setup_hook and trim on_ready**
+
+In `lib/bot.py`, add a `setup_hook` method (place it just before `on_ready`):
+
+```python
+    async def setup_hook(self) -> None:
+        """Load cogs and sync commands during login.
+
+        Runs once per process before the gateway connection. Raising here
+        propagates out of ``bot.start()`` (see lib/api.py), so a fatal startup
+        error terminates the process instead of running half-initialized.
+        """
+        # Fail hard: a bot that cannot load its cogs is broken.
         try:
             await self._load_cogs()
         except Exception:
             logger.exception("Failed to load cogs during startup")
             raise
-```
 
-For command sync:
-
-```python
-        # Sync commands
+        # Command sync hits Discord's global rate limits; tolerate a transient
+        # failure rather than crash-loop on a 429.
         logger.info("Syncing commands...")
         try:
             synced_commands = await self.tree.sync()
-        except Exception:
-            logger.exception("Failed to sync commands during startup")
-            raise
+        except discord.HTTPException:
+            logger.exception("Command sync failed; continuing without a sync")
+            return
         logger.info(
             "Synced %d commands: %s",
             len(synced_commands),
             ",".join(command.name for command in synced_commands),
         )
+        logger.info(
+            "Registered commands: %s",
+            ",".join(cmd.name for cmd in self.commands),
+        )
 ```
 
-If ruff flags `BLE001` (blind-except) on either block, append
-`# noqa: BLE001` to the `except Exception:` line — the re-raise makes the
-broad catch safe (it logs context, then propagates).
+Then in `on_ready`, delete the two `_load_cogs()`/`tree.sync()` blocks and the
+sync/registered-command logging (everything from the old
+`# Dynamically load all cogs` through the `Registered commands` log), leaving
+the LOG_CHANNEL resolution and the "Bot Startup" `log_bot_event` in place. The
+`if self._initial_startup_complete:` reconnect guard stays.
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_bot.py -k "setup_hook or on_ready" -v`
+Expected: PASS.
+
+- [ ] **Step 6: Format, check, commit**
+
+```bash
+uv run ruff format
+uv run invoke check
+git add lib/bot.py tests/test_bot.py
+git commit -m "refactor(bot): validate startup in setup_hook, not on_ready"
+```
+
+---
+
+### Task 7: Terminate the process on fatal bot-task failure
+
+**Files:**
+
+- Modify: `lib/api.py` (lifespan done-callback)
+- Test: `tests/test_api.py`
+
+**Interfaces:**
+
+- Consumes: `setup_hook` from Task 6 (its exception propagates out of
+  `bot.start()`).
+- Produces: `_handle_bot_task_result(task)` — a done-callback that raises
+  `SIGTERM` when the bot task ended with an exception.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `tests/test_api.py` (import `signal` and `_handle_bot_task_result`):
+
+```python
+@async_test
+async def test_handle_bot_task_result_signals_on_exception(
+    mocker: MockerFixture,
+) -> None:
+    """A bot task that died with an exception raises SIGTERM."""
+    mock_raise = mocker.patch("lib.api.signal.raise_signal")
+    mock_logger = mocker.patch("lib.api.logger")
+
+    async def _boom() -> None:
+        msg = "bot died"
+        raise RuntimeError(msg)
+
+    task = asyncio.ensure_future(_boom())
+    await asyncio.gather(task, return_exceptions=True)
+
+    _handle_bot_task_result(task)
+
+    mock_raise.assert_called_once_with(signal.SIGTERM)
+    mock_logger.critical.assert_called_once()
+
+
+@async_test
+async def test_handle_bot_task_result_noop_on_success(
+    mocker: MockerFixture,
+) -> None:
+    """A cleanly-finished bot task does not signal."""
+    mock_raise = mocker.patch("lib.api.signal.raise_signal")
+
+    async def _ok() -> None:
+        return
+
+    task = asyncio.ensure_future(_ok())
+    await asyncio.gather(task, return_exceptions=True)
+
+    _handle_bot_task_result(task)
+
+    mock_raise.assert_not_called()
+
+
+@async_test
+async def test_handle_bot_task_result_noop_on_cancel(
+    mocker: MockerFixture,
+) -> None:
+    """A cancelled bot task (normal shutdown) does not signal."""
+    mock_raise = mocker.patch("lib.api.signal.raise_signal")
+
+    async def _sleep() -> None:
+        await asyncio.sleep(1)
+
+    task = asyncio.ensure_future(_sleep())
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+    _handle_bot_task_result(task)
+
+    mock_raise.assert_not_called()
+```
+
+Also import `_handle_bot_task_result` in the existing
+`from lib.api import (...)` block.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_api.py -k handle_bot_task_result -v`
+Expected: FAIL — `ImportError`/`AttributeError`: `_handle_bot_task_result`
+does not exist.
+
+- [ ] **Step 3: Implement the callback and wire it in**
+
+In `lib/api.py`, add `import signal` at the top (alphabetical, after
+`import logging`). Add the callback at module level (below the imports, above
+`lifespan`):
+
+```python
+def _handle_bot_task_result(task: "asyncio.Task[None]") -> None:
+    """Crash the process if the bot task died, so k8s restarts the pod.
+
+    The bot runs as a fire-and-forget task; without this its exception would
+    sit unretrieved and the API would keep serving a dead bot.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is None:
+        return
+    logger.critical(
+        "Discord bot terminated unexpectedly; shutting down.", exc_info=exc
+    )
+    signal.raise_signal(signal.SIGTERM)
+```
+
+In `lifespan`, attach it right after creating `bot_task`:
+
+```python
+    bot_task = asyncio.create_task(bot.start(config.BOT_TOKEN, reconnect=True))
+    bot_task.add_done_callback(_handle_bot_task_result)
+```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `uv run pytest tests/test_bot.py -k "on_ready" -v`
-Expected: PASS. The existing happy-path `on_ready` tests are unaffected
-(no new log lines on success).
+Run: `uv run pytest tests/test_api.py -v`
+Expected: PASS. The existing lifespan tests still pass — their mocked
+`bot.start` finishes without exception, so the callback is a no-op.
 
 - [ ] **Step 5: Format, check, commit**
 
 ```bash
 uv run ruff format
 uv run invoke check
-git add lib/bot.py tests/test_bot.py
-git commit -m "feat(bot): fail fast when cog load or command sync errors"
+git add lib/api.py tests/test_api.py
+git commit -m "feat(api): terminate process when the bot task dies"
 ```
 
 ---
 
-### Task 7: Refactor tasks.py bootstrap + fix init fragility
+### Task 8: Refactor tasks.py bootstrap + fix init fragility
 
 **Files:**
 
 - Modify: `lib/cogs/tasks.py` (`__init__` → `_bootstrap_tasks`, unconditional
   attribute init)
-- Test: `tests/cogs/test_tasks.py` (add cog_unload-safety test)
+- Test: `tests/cogs/test_tasks.py`
 
 **Interfaces:**
 
 - Produces: `Tasks.__init__` always sets `self.youtube_feeds` and
-  `self.github_monitor`, so `cog_unload` never raises `AttributeError`.
+  `self.github_monitor`, so `cog_unload` never `AttributeError`s.
 
 - [ ] **Step 1: Write the failing test**
 
 In `tests/cogs/test_tasks.py`, add a test that `cog_unload` is safe even when
-the loop guards short-circuited (attributes were never set in the old code).
-Model it on the existing task tests in that file for fixture/mocking style;
-the key assertions:
+every task loop was already running (the branch where the old code never set
+the attributes). Mirror the existing "already running" tests in this file for
+construction style — construct the cog under
+`patch("discord.ext.tasks.Loop.start")`, then force each loop's `is_running`
+True at the **instance** level so
+`_bootstrap_tasks` skips the start branches:
 
 ```python
     @async_test
-    async def test_cog_unload_safe_without_bootstrap(
+    async def test_cog_unload_safe_when_tasks_preempted(
         self,
         mocker: MockerFixture,
         mock_config: MagicMock,
     ) -> None:
-        """cog_unload does not AttributeError when tasks were preempted."""
-        # Force every is_running() guard True so the bootstrap branches that
-        # used to set youtube_feeds / github_monitor are skipped.
-        mocker.patch.object(
-            Tasks.clean_channel_members_task, "is_running", return_value=True
-        )
-        mocker.patch.object(
-            Tasks.monitor_youtube_videos, "is_running", return_value=True
-        )
-        mocker.patch.object(
-            Tasks.monitor_github_activity, "is_running", return_value=True
-        )
-        for task_name in (
+        """cog_unload does not AttributeError when loops were already running."""
+        bot = mocker.MagicMock()
+        with mocker.patch("discord.ext.tasks.Loop.start"):
+            cog = Tasks(bot)
+
+        # Force the guards so a re-bootstrap would skip the (old) attribute
+        # assignments, and stub cancel/close for unload.
+        for name in (
             "clean_channel_members_task",
             "clean_channel_members_task_dry_run",
             "monitor_youtube_videos",
             "monitor_github_activity",
         ):
-            mocker.patch.object(getattr(Tasks, task_name), "cancel")
+            loop = mocker.patch.object(cog, name)
+            loop.is_running.return_value = True
 
-        bot = mocker.MagicMock()
-        cog = Tasks(bot)
-
-        # Must not raise AttributeError on github_monitor / youtube_feeds.
         await cog.cog_unload()
 
         assert cog.github_monitor is None
         assert cog.youtube_feeds == {}
 ```
 
-Ensure `Tasks` and `async_test`/`MockerFixture` are imported at the top of the
-file (follow the existing imports there).
+Confirm `Tasks`, `async_test`, and `MockerFixture` are imported at the top of
+the file (match the existing imports).
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 2: Run the test to verify it passes against the new intent**
 
 Run: `uv run pytest tests/cogs/test_tasks.py -k cog_unload_safe -v`
-Expected: FAIL — `AttributeError: 'Tasks' object has no attribute
-'github_monitor'` (only set inside the skipped `if not is_running()`
-branch).
+Expected: with the current code this test constructs the cog normally (loops
+patched), so `github_monitor`/`youtube_feeds` happen to be set — it may PASS
+already. The regression value is locking in the unconditional init; proceed to
+the refactor and keep it green.
 
 - [ ] **Step 3: Refactor __init__ and init attributes unconditionally**
 
-In `lib/cogs/tasks.py`, replace the body of `__init__` (the TODO comment
-through the GitHub bootstrap block) with a call to a new helper, and set the
-stateful attributes unconditionally:
+In `lib/cogs/tasks.py`, replace the `__init__` body (the TODO through the
+GitHub bootstrap block) with unconditional state init plus a helper call:
 
 ```python
     def __init__(self, bot: DiscordBot) -> None:
         self.bot = bot
         # Initialize task state unconditionally so cog_unload is always safe,
-        # even if a task was already running when the cog re-initialized.
+        # even if a loop was already running when the cog re-initialized.
         self.youtube_feeds: dict[str, youtube.YoutubeFeedParser] = {}
         self.github_monitor: github.GitHubMonitor | None = None
         self._bootstrap_tasks()
@@ -1054,10 +1253,9 @@ stateful attributes unconditionally:
             logger.warning("monitor_github_activity task is already running")
 ```
 
-Note the `self.youtube_feeds = {}` and `self.github_monitor = None`
-assignments that previously lived inside the `if not is_running()` branches
-are removed from `_bootstrap_tasks` (they now live unconditionally in
-`__init__`).
+The `self.youtube_feeds = {}` and `self.github_monitor = None` assignments that
+previously lived inside the `if not is_running()` branches are removed from
+`_bootstrap_tasks` (they now live unconditionally in `__init__`).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1075,12 +1273,11 @@ git commit -m "refactor(tasks): extract bootstrap, harden cog_unload"
 
 ---
 
-### Task 8: Version bump, full verification, and closeout
+### Task 9: Version bump, full verification, and closeout
 
 **Files:**
 
-- Modify: `pyproject.toml`
-- Modify: `kubernetes/discordbot.yaml`
+- Modify: `pyproject.toml`, `kubernetes/discordbot.yaml`
 - Modify: `docs/TODO.md`, `CLAUDE.md`
 - Update: KB vault (`~/code/kb`)
 
@@ -1094,8 +1291,7 @@ In `pyproject.toml`, set `version = "0.13.0"`. In
 
 Run: `uv run invoke check && uv run invoke test`
 Expected: all checks pass; pytest reports 100% coverage (including branch
-coverage). If coverage dips, add the missing case to the relevant test file
-before proceeding.
+coverage). If coverage dips, add the missing case before proceeding.
 
 - [ ] **Step 3: Commit the version bump**
 
@@ -1107,18 +1303,20 @@ git commit -m "chore: bump version to 0.13.0"
 - [ ] **Step 4: Record learnings**
 
 - `docs/TODO.md`: the six inline TODOs were code comments, not checklist
-  entries — nothing to check off. If any follow-up surfaced during
-  implementation, add it under the relevant section.
-- `CLAUDE.md`: add a short note under the testing/config guidance that a
-  module reading `config` at call time must be added to the `mock_config`
-  patch list in `tests/conftest.py`, and that widening a channel type to
-  include `discord.Thread` also requires widening `LogContext.channel` and
+  entries. Add any follow-up discovered (e.g. generalizing thread handling to
+  voice/forum channels, if desired).
+- `CLAUDE.md`: add short notes that (a) exceptions raised in discord.py event
+  handlers like `on_ready` are swallowed by the dispatcher — do startup
+  validation in `setup_hook` and surface fatal failures through the FastAPI
+  lifespan; (b) a module reading `config` at call time must be added to the
+  `mock_config` patch list in `tests/conftest.py`; (c) widening a channel type
+  to include `discord.Thread` also requires widening `LogContext.channel` and
   `log_moderation_action`'s `channel` parameter.
 - KB (`~/code/kb`): update the `Jim's Garage Discord Bot` project note — close
-  the `github_monitor`/`youtube_feeds` init-fragility open thread, and record
-  the two-tier message-capture improvement (concise embed vs. full log dump)
-  and the 2026-07-12 investigation that motivated it. Update today's daily
-  note per the `/kb-update` conventions.
+  the `github_monitor`/`youtube_feeds` init-fragility thread; record the
+  two-tier message-capture design, the `setup_hook`/lifespan fail-fast fix, and
+  the 2026-07-12 investigation that motivated the capture work. Update today's
+  daily note per the `/kb-update` conventions.
 
 - [ ] **Step 5: Commit doc/closeout changes**
 
@@ -1133,21 +1331,25 @@ git commit -m "docs: record inline-cleanup learnings and conventions"
 
 **Spec coverage:**
 
-- Config routing (API_HOST, PORT_MIN/MAX) → Task 1. ✅
-- Fail-fast startup exceptions → Task 6. ✅
-- Thread-aware ban handling → Task 4. ✅
-- Drop #general-chat TODO → Task 5, Step 5. ✅
-- tasks.py refactor + fragility fix → Task 7. ✅
-- `summarize_message` (embed) → Tasks 2, 3. ✅
-- `describe_message_full` (log, every ban path, 4000 cap) → Tasks 2, 5. ✅
-- on_message breadcrumb collapse → Task 5, Step 6. ✅
-- Version bump + closeout (TODO/CLAUDE/KB) → Task 8. ✅
+- Config: API_HOST → config, port bounds stay constants → Task 1.
+- message_format (summarize + describe, single-line, poll/snapshots) →
+  Task 2.
+- Embed summary + pre-existing debug-log bug → Task 3.
+- Thread-aware bans (on_message gate + guard + type widening) → Task 4.
+- Full payload capture (top of ban_spammer, INFO, single-line) + drop
+  general-chat TODO → Task 5.
+- Fail-fast in setup_hook → Task 6; process-exit wiring → Task 7.
+- tasks.py refactor + fragility fix → Task 8.
+- Version bump + closeout → Task 9.
 
 **Type consistency:** `summarize_message(message, max_length=None)` and
-`describe_message_full(message, max_content=4000)` are used with the same
-names/signatures in Tasks 3 and 5. Channel type
-`discord.TextChannel | discord.Thread` is applied consistently in
-`ban_spammer`, `log_moderation_action`, and `LogContext.channel` (Task 4).
+`describe_message_full(message, max_content=4000)` are used with matching
+names/signatures in Tasks 3 and 5. `discord.TextChannel | discord.Thread` is
+applied consistently in `on_message`, `ban_spammer`, `log_moderation_action`,
+and `LogContext.channel` (Task 4). `_handle_bot_task_result` (Task 7) consumes
+the propagating exception from `setup_hook` (Task 6).
 
-**Placeholder scan:** No TBD/TODO-in-plan; every code step shows full code;
-every test step shows the assertion and the expected run result.
+**Placeholder scan:** No TBD/placeholder; every code step shows full code;
+every test step shows the assertion and the expected run result. Import timing
+is explicit (`summarize_message` in Task 3, `describe_message_full` added in
+Task 5) to avoid an interim `F401`.
