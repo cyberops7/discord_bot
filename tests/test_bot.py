@@ -958,8 +958,33 @@ class TestDiscordBot:
         assert len(caplog.records) == 1
         assert caplog.records[0].levelname == "WARNING"
         assert caplog.records[0].message == (
-            "Message channel is not a TextChannel, skipping `ban_spammer`"
+            "Message channel is not a TextChannel or Thread, skipping `ban_spammer`"
         )
+
+    @async_test
+    async def test_ban_spammer_thread_channel(
+        self,
+        mocker: MockerFixture,
+        discord_bot: DiscordBot,
+        mock_message: MagicMock,
+        mock_user: MagicMock,
+    ) -> None:
+        """A message posted in a thread is still processed for banning."""
+        thread = mocker.MagicMock(spec=discord.Thread)
+        thread.id = 555
+        thread.name = "spam-thread"
+        thread.mention = "<#555>"
+        mock_message.channel = thread
+        mock_message.author = mock_user
+
+        mocker.patch("lib.bot.DiscordBot._has_privileged_role", return_value=False)
+        mocked_ban = mocker.patch.object(mock_user, "ban", new_callable=AsyncMock)
+        mocked_log = mocker.patch("lib.bot.DiscordBot.log_moderation_action")
+
+        await discord_bot.ban_spammer("Test ban reason", mock_message)
+
+        mocked_ban.assert_called_once()
+        mocked_log.assert_called_once()
 
     @async_test
     async def test_ban_spammer_privileged_role(
@@ -1298,14 +1323,36 @@ class TestDiscordBot:
             await discord_bot.on_message(mock_message)
 
         mocked_ban_spammer.assert_called_once()
-        assert len(caplog.records) == 2
+        assert len(caplog.records) == 1
         record = caplog.records[0]
         assert record.levelname == "WARNING"
         assert (
             record.message
-            == f"Received message from {mock_user.display_name} ({mock_user}) "
-            f"in #mousetrap: {mock_message.content}"
+            == f"Message received in #mousetrap from {mock_user.display_name} "
+            f"({mock_user}), processing for ban"
         )
+
+    @async_test
+    async def test_on_message_mousetrap_thread(
+        self,
+        mocker: MockerFixture,
+        discord_bot: DiscordBot,
+        mock_message: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """A message in a thread under #mousetrap triggers ban handling."""
+        thread = mocker.MagicMock(spec=discord.Thread)
+        thread.id = 777  # not the mousetrap id
+        thread.parent_id = mock_config.CHANNELS.MOUSETRAP
+        mock_message.channel = thread
+        mocked_ban_spammer = mocker.patch(
+            "lib.bot.DiscordBot.ban_spammer", AsyncMock(return_value=None)
+        )
+        mocker.patch("lib.bot.DiscordBot.process_commands")
+
+        await discord_bot.on_message(mock_message)
+
+        mocked_ban_spammer.assert_called_once()
 
     async def test_on_member_join(
         self,

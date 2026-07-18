@@ -23,7 +23,7 @@ class LogContext:
     action: str | None = None
     embed: bool = False
     user: discord.Member | discord.ClientUser | None = None
-    channel: discord.TextChannel | None = None
+    channel: discord.TextChannel | discord.Thread | None = None
     extra_embed_fields: list[EmbedFieldDict] = field(default_factory=list)
 
     def __post_init__(self) -> None:

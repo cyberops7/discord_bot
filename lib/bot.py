@@ -379,7 +379,7 @@ class DiscordBot(commands.Bot):
         action: str,
         reason: str = "No reason provided",
         extra_log_channel: discord.TextChannel | None = None,
-        channel: discord.TextChannel | None = None,
+        channel: discord.TextChannel | discord.Thread | None = None,
         level: str = "WARNING",
         message: discord.Message | None = None,
     ) -> discord.Message | None:
@@ -479,15 +479,14 @@ class DiscordBot(commands.Bot):
             )
             return
 
-        # TODO @cyberops7: test if this needs to include discord.Thread as well
-        if not isinstance(message.channel, discord.TextChannel):
+        if not isinstance(message.channel, discord.TextChannel | discord.Thread):
             logger.warning(
-                "Message channel is not a TextChannel, skipping `ban_spammer`"
+                "Message channel is not a TextChannel or Thread, skipping `ban_spammer`"
             )
             return
 
         user: discord.Member = message.author
-        channel: discord.TextChannel = message.channel
+        channel: discord.TextChannel | discord.Thread = message.channel
 
         logger.info(
             "Processing potential spam from user %s (%s) in channel #%s",
@@ -613,15 +612,18 @@ class DiscordBot(commands.Bot):
         if message.author == self.user:
             return
 
-        # Ban spammers - no one is supposed to post to #mousetrap
-        if message.channel.id == config.CHANNELS.MOUSETRAP:
+        # Ban spammers - no one should post in #mousetrap or its threads.
+        channel = message.channel
+        in_mousetrap = channel.id == config.CHANNELS.MOUSETRAP or (
+            isinstance(channel, discord.Thread)
+            and channel.parent_id == config.CHANNELS.MOUSETRAP
+        )
+        if in_mousetrap:
             logger.warning(
-                "Received message from %s (%s) in #mousetrap: %s",
+                "Message received in #mousetrap from %s (%s), processing for ban",
                 message.author.display_name,
                 message.author,
-                message.content,
             )
-            logger.warning("Message object: %s", message)
             ban_reason = "Message detected in #mousetrap."
             await self.ban_spammer(ban_reason, message)
 
