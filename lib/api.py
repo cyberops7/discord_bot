@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import signal
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,6 +31,21 @@ class AppState(StarletteState):
         self.bot = bot
 
 
+def _handle_bot_task_result(task: asyncio.Task[None]) -> None:
+    """Crash the process if the bot task died, so k8s restarts the pod.
+
+    The bot runs as a fire-and-forget task; without this its exception would
+    sit unretrieved and the API would keep serving a dead bot.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is None:
+        return
+    logger.critical("Discord bot terminated unexpectedly; shutting down.", exc_info=exc)
+    signal.raise_signal(signal.SIGTERM)
+
+
 @asynccontextmanager
 async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
     logger.info("Initializing Discord bot...")
@@ -49,6 +65,7 @@ async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting Discord bot...")
     # Start the bot asynchronously (in the background) to not block 'app's lifespan
     bot_task = asyncio.create_task(bot.start(config.BOT_TOKEN, reconnect=True))
+    bot_task.add_done_callback(_handle_bot_task_result)
 
     # Save the bot instance to FastAPI's state
     api_app.state = AppState(bot=bot)
