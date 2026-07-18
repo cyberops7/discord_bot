@@ -1173,6 +1173,60 @@ class TestDiscordBot:
         assert "HTTP error while banning user" in caplog.records[3].message
 
     @async_test
+    async def test_setup_hook_loads_cogs_and_syncs(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """setup_hook loads cogs and syncs commands."""
+        mock_load = mocker.patch.object(discord_bot, "_load_cogs")
+        mock_sync = mocker.patch.object(discord_bot.tree, "sync", return_value=[])
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.setup_hook()
+
+        mock_load.assert_called_once()
+        mock_sync.assert_called_once()
+        assert any("Synced 0 commands" in r.message for r in caplog.records)
+
+    @async_test
+    async def test_setup_hook_cog_failure_raises(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """setup_hook re-raises (crashes startup) when cog loading fails."""
+        mocker.patch.object(discord_bot, "_load_cogs", side_effect=RuntimeError("boom"))
+        mocker.patch.object(discord_bot.tree, "sync")
+
+        with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError):
+            await discord_bot.setup_hook()
+
+        assert any("Failed to load cogs" in r.message for r in caplog.records)
+
+    @async_test
+    async def test_setup_hook_sync_http_error_tolerated(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """A transient command-sync HTTP error is logged, not raised."""
+        mocker.patch.object(discord_bot, "_load_cogs")
+        mocker.patch.object(
+            discord_bot.tree,
+            "sync",
+            side_effect=discord.HTTPException(MagicMock(), "429"),
+        )
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.setup_hook()  # must NOT raise
+
+        assert any("Command sync failed" in r.message for r in caplog.records)
+
+    @async_test
     async def test_on_ready(
         self,
         mocker: MockerFixture,
@@ -1185,30 +1239,15 @@ class TestDiscordBot:
             discord_bot, "_get_log_channel", return_value=mock_config.LOG_CHANNEL
         )
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
-        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
-        mock_sync_commands = mocker.patch.object(
-            discord_bot.tree, "sync", return_value=[]
-        )
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 6
-        assert caplog.records[0].levelname == "INFO"
+        assert len(caplog.records) == 3
         assert "Bot is ready" in caplog.records[0].message
-        assert caplog.records[1].levelname == "INFO"
         assert "We have logged in as TestBot" in caplog.records[1].message
-        assert caplog.records[2].levelname == "INFO"
         assert "Performing initial startup procedures..." in caplog.records[2].message
-        assert caplog.records[3].levelname == "INFO"
-        assert "Syncing commands..." in caplog.records[3].message
-        assert caplog.records[4].levelname == "INFO"
-        assert "Synced 0 commands:" in caplog.records[4].message
-        assert caplog.records[5].levelname == "INFO"
-        assert "Registered commands:" in caplog.records[5].message
-        mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
-        mock_sync_commands.assert_called_once()
 
     @async_test
     async def test_on_ready_no_user(
@@ -1251,24 +1290,18 @@ class TestDiscordBot:
         # Mock get_channel to return None to simulate when the channel is not found
         mocker.patch.object(discord_bot, "_get_log_channel", return_value=None)
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
-        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
-        mock_sync_commands = mocker.patch.object(
-            discord_bot.tree, "sync", return_value=[]
-        )
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 7
+        assert len(caplog.records) == 4
         assert caplog.records[3].levelname == "WARNING"
         assert (
             f"Could not find log channel with ID {mock_config.CHANNELS.BOT_LOGS}"
             in caplog.records[3].message
         )
 
-        mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
-        mock_sync_commands.assert_called_once()
 
     @async_test
     async def test_on_ready_no_match(

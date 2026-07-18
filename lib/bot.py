@@ -111,6 +111,38 @@ class DiscordBot(commands.Bot):
 
         logger.info("Bot cogs: %s", list(self.cogs.keys()))
 
+    async def setup_hook(self) -> None:
+        """Load cogs and sync commands during login.
+
+        Runs once per process before the gateway connection. Raising here
+        propagates out of ``bot.start()`` (see lib/api.py), so a fatal startup
+        error terminates the process instead of running half-initialized.
+        """
+        # Fail hard: a bot that cannot load its cogs is broken.
+        try:
+            await self._load_cogs()
+        except Exception:
+            logger.exception("Failed to load cogs during startup")
+            raise
+
+        # Command sync hits Discord's global rate limits; tolerate a transient
+        # failure rather than crash-loop on a 429.
+        logger.info("Syncing commands...")
+        try:
+            synced_commands = await self.tree.sync()
+        except discord.HTTPException:
+            logger.exception("Command sync failed; continuing without a sync")
+            return
+        logger.info(
+            "Synced %d commands: %s",
+            len(synced_commands),
+            ",".join(command.name for command in synced_commands),
+        )
+        logger.info(
+            "Registered commands: %s",
+            ",".join(cmd.name for cmd in self.commands),
+        )
+
     async def on_ready(self) -> None:
         """Called when the bot is ready"""
         logger.info("Bot is ready")
@@ -147,23 +179,6 @@ class DiscordBot(commands.Bot):
             logger.warning(
                 "Could not find log channel with ID %s", config.CHANNELS.BOT_LOGS
             )
-
-        # TODO @cyberops7: add exception catching
-        # Dynamically load all cogs
-        await self._load_cogs()
-
-        # TODO @cyberops7: add exception catching
-        # Sync commands
-        logger.info("Syncing commands...")
-        synced_commands = await self.tree.sync()
-        logger.info(
-            "Synced %d commands: %s",
-            len(synced_commands),
-            ",".join(command.name for command in synced_commands),
-        )
-
-        msg = ",".join([cmd.name for cmd in self.commands])
-        logger.info("Registered commands: %s", msg)
 
         await self.log_bot_event(
             level="INFO",
