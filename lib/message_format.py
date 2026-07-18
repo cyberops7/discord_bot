@@ -69,7 +69,7 @@ def describe_message_full(message: discord.Message, max_content: int = 4000) -> 
         parts.append(
             f"attachment[{i}]=(filename={attachment.filename!r}, "
             f"content_type={attachment.content_type!r}, "
-            f"size={attachment.size}, url={attachment.url})"
+            f"size={attachment.size}, url={attachment.url!r})"
         )
 
     for i, embed in enumerate(message.embeds):
