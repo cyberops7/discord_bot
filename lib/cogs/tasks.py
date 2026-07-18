@@ -20,8 +20,14 @@ logger: logging.Logger = logging.getLogger(__name__)
 class Tasks(commands.Cog):
     def __init__(self, bot: DiscordBot) -> None:
         self.bot = bot
+        # Initialize task state unconditionally so cog_unload is always safe,
+        # even if a loop was already running when the cog re-initialized.
+        self.youtube_feeds: dict[str, youtube.YoutubeFeedParser] = {}
+        self.github_monitor: github.GitHubMonitor | None = None
+        self._bootstrap_tasks()
 
-        # TODO @cyberops7: refactor the startup code into a separate function
+    def _bootstrap_tasks(self) -> None:
+        """Start each background task if it is not already running."""
         # Bootstrap task: Clean Channel Members
         if config.DRY_RUN:
             if not self.clean_channel_members_task_dry_run.is_running():
@@ -37,14 +43,12 @@ class Tasks(commands.Cog):
 
         # Bootstrap task: YouTube Video Monitor
         if not self.monitor_youtube_videos.is_running():
-            self.youtube_feeds: dict[str, youtube.YoutubeFeedParser] = {}
             self.monitor_youtube_videos.start()
         else:
             logger.warning("monitor_youtube_videos task is already running")
 
         # Bootstrap task: GitHub Activity Monitor
         if not self.monitor_github_activity.is_running():
-            self.github_monitor: github.GitHubMonitor | None = None
             self.monitor_github_activity.start()
         else:
             logger.warning("monitor_github_activity task is already running")

@@ -378,6 +378,32 @@ class TestTasks:
             assert isinstance(cog, Tasks)
             assert mock_start.call_count == 3
 
+    @async_test
+    async def test_cog_unload_safe_when_tasks_preempted(
+        self,
+        mocker: MockerFixture,
+    ) -> None:
+        """cog_unload does not AttributeError when loops were already running."""
+        bot = mocker.MagicMock()
+        with patch("discord.ext.tasks.Loop.start"):
+            cog = Tasks(bot)
+
+        # Force the guards so a re-bootstrap would skip the (old) attribute
+        # assignments, and stub cancel/close for unload.
+        for name in (
+            "clean_channel_members_task",
+            "clean_channel_members_task_dry_run",
+            "monitor_youtube_videos",
+            "monitor_github_activity",
+        ):
+            loop = mocker.patch.object(cog, name)
+            loop.is_running.return_value = True
+
+        await cog.cog_unload()
+
+        assert cog.github_monitor is None
+        assert cog.youtube_feeds == {}
+
     @pytest.mark.parametrize("dry_run", [True, False])
     @async_test
     async def test_cog_unload(
