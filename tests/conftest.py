@@ -139,6 +139,7 @@ def mock_config(
         patch("lib.bot_log_context.config", mock_cfg),
         patch("lib.cogs.tasks.config", mock_cfg),
         patch("lib.github.config", mock_cfg),
+        patch("lib.message_format.config", mock_cfg),
         patch("tests.test_bot.config", mock_cfg),
         patch("lib.config.load_dotenv") as mock_load_dotenv,
     ):
@@ -168,4 +169,9 @@ def mock_message(mock_user: MagicMock, mock_channel: MagicMock) -> MagicMock:
     message.author = mock_user
     message.channel = mock_channel
     message.content = "test message"
+    message.attachments = []
+    message.embeds = []
+    message.stickers = []
+    message.poll = None
+    message.message_snapshots = []
     return message
