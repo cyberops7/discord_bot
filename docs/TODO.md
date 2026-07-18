@@ -59,7 +59,7 @@
       have to install all the linting deps into the test image
 - [x] Change from makefile to Python Invoke
 - [ ] Add version check to pre-commit
-- [ ] Fix pre-commit uv.lock to only check, not change uv.lock
+- [x] Fix pre-commit uv.lock to only check, not change uv.lock
 - [ ] Use trivy as a container instead of an installed binary?
 - [ ] Cache uv/venv in check-test workflow
 - [ ] Move dot files into a .conf directory?
@@ -132,6 +132,13 @@
 - [x] Logs in bash files (colorized)
 - [ ] Add more logging everywhere
 - [x] Tune discord's noisy logs
+- [ ] Follow-ups from the v0.13.0 spam-capture work (0.13.0 review):
+   - [ ] Guard `summarize_message` truncation for `max_length < 3`
+   - [ ] Suppress the re-raised bot-task exception in the API lifespan
+     `finally` so a crash-shutdown log is clean
+   - [ ] Moderators reading `#bot-logs` see raw spam content in the embed;
+     masked-link markdown renders clickable (known trade-off of showing the
+     message — revisit if it becomes a phishing vector)
 
 ## API
 

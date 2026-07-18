@@ -822,10 +822,9 @@ class TestDiscordBot:
         # Reset mock for the next test
         mock_log_to_channel.reset_mock()
 
-        # Test with a long message (more than max_msg_length)
-        long_message = (
-            "x" * 600
-        )  # 600 characters, which exceeds the 500-character limit
+        # A 600-char message is under EMBED_MAX_LENGTH (1024): summarized in
+        # full, no ellipsis.
+        long_message = "x" * 600
         mock_message.content = long_message
 
         result = await discord_bot.log_moderation_action(
@@ -840,11 +839,10 @@ class TestDiscordBot:
         mock_log_to_channel.assert_called_once()
         context = mock_log_to_channel.call_args[0][0]
 
-        # Check that the message was truncated and ellipsis was added
         message_field = context.extra_embed_fields[0]
         assert message_field["name"] == "Message"
-        assert message_field["value"] == long_message[:500] + "..."
-        assert len(message_field["value"]) == 503  # 500 chars + 3 for ellipsis
+        assert message_field["value"] == long_message
+        assert "..." not in message_field["value"]
         assert message_field["inline"] is False
 
     @async_test
@@ -938,9 +936,11 @@ class TestDiscordBot:
         with caplog.at_level(logging.INFO):
             await discord_bot.ban_spammer("Test ban reason", mock_message)
 
-        assert len(caplog.records) == 1
-        assert caplog.records[0].levelname == "WARNING"
-        assert caplog.records[0].message == (
+        assert len(caplog.records) == 2
+        assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[1].message == (
             "Message author is not a Member object, skipping `ban_spammer`."
         )
 
@@ -957,11 +957,38 @@ class TestDiscordBot:
         with caplog.at_level(logging.INFO):
             await discord_bot.ban_spammer("Test ban reason", mock_message)
 
-        assert len(caplog.records) == 1
-        assert caplog.records[0].levelname == "WARNING"
-        assert caplog.records[0].message == (
-            "Message channel is not a TextChannel, skipping `ban_spammer`"
+        assert len(caplog.records) == 2
+        assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[1].message == (
+            "Message channel is not a TextChannel or Thread, skipping `ban_spammer`"
         )
+
+    @async_test
+    async def test_ban_spammer_thread_channel(
+        self,
+        mocker: MockerFixture,
+        discord_bot: DiscordBot,
+        mock_message: MagicMock,
+        mock_user: MagicMock,
+    ) -> None:
+        """A message posted in a thread is still processed for banning."""
+        thread = mocker.MagicMock(spec=discord.Thread)
+        thread.id = 555
+        thread.name = "spam-thread"
+        thread.mention = "<#555>"
+        mock_message.channel = thread
+        mock_message.author = mock_user
+
+        mocker.patch("lib.bot.DiscordBot._has_privileged_role", return_value=False)
+        mocked_ban = mocker.patch.object(mock_user, "ban", new_callable=AsyncMock)
+        mocked_log = mocker.patch("lib.bot.DiscordBot.log_moderation_action")
+
+        await discord_bot.ban_spammer("Test ban reason", mock_message)
+
+        mocked_ban.assert_called_once()
+        mocked_log.assert_called_once()
 
     @async_test
     async def test_ban_spammer_privileged_role(
@@ -990,16 +1017,18 @@ class TestDiscordBot:
 
         mocked_has_privileged_role.assert_called_once()
         mocked_log_to_channel.assert_called_once()
-        assert len(caplog.records) == 2
+        assert len(caplog.records) == 3
         assert caplog.records[0].levelname == "INFO"
-        assert (
-            caplog.records[0].message
-            == f"Processing potential spam from user {mock_user.display_name} "
-            f"({mock_user}) in channel #{mock_message.channel.name}"
-        )
+        assert caplog.records[0].message.startswith("Spam ban payload")
         assert caplog.records[1].levelname == "INFO"
         assert (
             caplog.records[1].message
+            == f"Processing potential spam from user {mock_user.display_name} "
+            f"({mock_user}) in channel #{mock_message.channel.name}"
+        )
+        assert caplog.records[2].levelname == "INFO"
+        assert (
+            caplog.records[2].message
             == f"User {mock_user.display_name} ({mock_user}) has privileged role, "
             f"not banning"
         )
@@ -1028,22 +1057,24 @@ class TestDiscordBot:
         mocked_has_privileged_role.assert_called_once()
         mocked_ban.assert_called_once()
         mocked_log_moderation_action.assert_called_once()
-        assert len(caplog.records) == 3
+        assert len(caplog.records) == 4
         assert caplog.records[0].levelname == "INFO"
-        assert (
-            caplog.records[0].message
-            == f"Processing potential spam from user {mock_user.display_name} "
-            f"({mock_user}) in channel #{mock_message.channel.name}"
-        )
-        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "INFO"
         assert (
             caplog.records[1].message
-            == f"Banning user {mock_user.display_name} ({mock_user}) for spam in "
-            f"channel #{mock_message.channel.name}"
+            == f"Processing potential spam from user {mock_user.display_name} "
+            f"({mock_user}) in channel #{mock_message.channel.name}"
         )
         assert caplog.records[2].levelname == "WARNING"
         assert (
             caplog.records[2].message
+            == f"Banning user {mock_user.display_name} ({mock_user}) for spam in "
+            f"channel #{mock_message.channel.name}"
+        )
+        assert caplog.records[3].levelname == "WARNING"
+        assert (
+            caplog.records[3].message
             == f"Successfully banned user {mock_user.display_name} ({mock_user}) "
             f"for spam"
         )
@@ -1077,21 +1108,23 @@ class TestDiscordBot:
         mocked_log_error.assert_called_once()
 
         # Check log messages
-        assert len(caplog.records) == 3
+        assert len(caplog.records) == 4
         assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "INFO"
         assert (
-            caplog.records[0].message
+            caplog.records[1].message
             == f"Processing potential spam from user {mock_user.display_name} "
             f"({mock_user}) in channel #{mock_message.channel.name}"
         )
-        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[2].levelname == "WARNING"
         assert (
-            caplog.records[1].message
+            caplog.records[2].message
             == f"Banning user {mock_user.display_name} ({mock_user}) for spam in "
             f"channel #{mock_message.channel.name}"
         )
-        assert caplog.records[2].levelname == "ERROR"
-        assert "Bot lacks permission to ban user" in caplog.records[2].message
+        assert caplog.records[3].levelname == "ERROR"
+        assert "Bot lacks permission to ban user" in caplog.records[3].message
 
     @async_test
     async def test_ban_spammer_http_exception(
@@ -1121,21 +1154,77 @@ class TestDiscordBot:
         mocked_log_error.assert_called_once()
 
         # Check log messages
-        assert len(caplog.records) == 3
+        assert len(caplog.records) == 4
         assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "INFO"
         assert (
-            caplog.records[0].message
+            caplog.records[1].message
             == f"Processing potential spam from user {mock_user.display_name} "
             f"({mock_user}) in channel #{mock_message.channel.name}"
         )
-        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[2].levelname == "WARNING"
         assert (
-            caplog.records[1].message
+            caplog.records[2].message
             == f"Banning user {mock_user.display_name} ({mock_user}) for spam in "
             f"channel #{mock_message.channel.name}"
         )
-        assert caplog.records[2].levelname == "ERROR"
-        assert "HTTP error while banning user" in caplog.records[2].message
+        assert caplog.records[3].levelname == "ERROR"
+        assert "HTTP error while banning user" in caplog.records[3].message
+
+    @async_test
+    async def test_setup_hook_loads_cogs_and_syncs(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """setup_hook loads cogs and syncs commands."""
+        mock_load = mocker.patch.object(discord_bot, "_load_cogs")
+        mock_sync = mocker.patch.object(discord_bot.tree, "sync", return_value=[])
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.setup_hook()
+
+        mock_load.assert_called_once()
+        mock_sync.assert_called_once()
+        assert any("Synced 0 commands" in r.message for r in caplog.records)
+
+    @async_test
+    async def test_setup_hook_cog_failure_raises(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """setup_hook re-raises (crashes startup) when cog loading fails."""
+        mocker.patch.object(discord_bot, "_load_cogs", side_effect=RuntimeError("boom"))
+        mocker.patch.object(discord_bot.tree, "sync")
+
+        with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError):
+            await discord_bot.setup_hook()
+
+        assert any("Failed to load cogs" in r.message for r in caplog.records)
+
+    @async_test
+    async def test_setup_hook_sync_http_error_tolerated(
+        self,
+        mocker: MockerFixture,
+        caplog: pytest.LogCaptureFixture,
+        discord_bot: DiscordBot,
+    ) -> None:
+        """A transient command-sync HTTP error is logged, not raised."""
+        mocker.patch.object(discord_bot, "_load_cogs")
+        mocker.patch.object(
+            discord_bot.tree,
+            "sync",
+            side_effect=discord.HTTPException(MagicMock(), "429"),
+        )
+
+        with caplog.at_level(logging.INFO):
+            await discord_bot.setup_hook()  # must NOT raise
+
+        assert any("Command sync failed" in r.message for r in caplog.records)
 
     @async_test
     async def test_on_ready(
@@ -1150,30 +1239,15 @@ class TestDiscordBot:
             discord_bot, "_get_log_channel", return_value=mock_config.LOG_CHANNEL
         )
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
-        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
-        mock_sync_commands = mocker.patch.object(
-            discord_bot.tree, "sync", return_value=[]
-        )
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 6
-        assert caplog.records[0].levelname == "INFO"
+        assert len(caplog.records) == 3
         assert "Bot is ready" in caplog.records[0].message
-        assert caplog.records[1].levelname == "INFO"
         assert "We have logged in as TestBot" in caplog.records[1].message
-        assert caplog.records[2].levelname == "INFO"
         assert "Performing initial startup procedures..." in caplog.records[2].message
-        assert caplog.records[3].levelname == "INFO"
-        assert "Syncing commands..." in caplog.records[3].message
-        assert caplog.records[4].levelname == "INFO"
-        assert "Synced 0 commands:" in caplog.records[4].message
-        assert caplog.records[5].levelname == "INFO"
-        assert "Registered commands:" in caplog.records[5].message
-        mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
-        mock_sync_commands.assert_called_once()
 
     @async_test
     async def test_on_ready_no_user(
@@ -1216,24 +1290,18 @@ class TestDiscordBot:
         # Mock get_channel to return None to simulate when the channel is not found
         mocker.patch.object(discord_bot, "_get_log_channel", return_value=None)
         mock_log_bot_event = mocker.patch("lib.bot.DiscordBot.log_bot_event")
-        mock_load_cogs = mocker.patch.object(discord_bot, "_load_cogs")
-        mock_sync_commands = mocker.patch.object(
-            discord_bot.tree, "sync", return_value=[]
-        )
 
         with caplog.at_level(logging.INFO):
             await discord_bot.on_ready()
 
-        assert len(caplog.records) == 7
+        assert len(caplog.records) == 4
         assert caplog.records[3].levelname == "WARNING"
         assert (
             f"Could not find log channel with ID {mock_config.CHANNELS.BOT_LOGS}"
             in caplog.records[3].message
         )
 
-        mock_load_cogs.assert_called_once()
         mock_log_bot_event.assert_called_once()
-        mock_sync_commands.assert_called_once()
 
     @async_test
     async def test_on_ready_no_match(
@@ -1300,14 +1368,36 @@ class TestDiscordBot:
             await discord_bot.on_message(mock_message)
 
         mocked_ban_spammer.assert_called_once()
-        assert len(caplog.records) == 2
+        assert len(caplog.records) == 1
         record = caplog.records[0]
         assert record.levelname == "WARNING"
         assert (
             record.message
-            == f"Received message from {mock_user.display_name} ({mock_user}) "
-            f"in #mousetrap: {mock_message.content}"
+            == f"Message received in #mousetrap from {mock_user.display_name} "
+            f"({mock_user}), processing for ban"
         )
+
+    @async_test
+    async def test_on_message_mousetrap_thread(
+        self,
+        mocker: MockerFixture,
+        discord_bot: DiscordBot,
+        mock_message: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """A message in a thread under #mousetrap triggers ban handling."""
+        thread = mocker.MagicMock(spec=discord.Thread)
+        thread.id = 777  # not the mousetrap id
+        thread.parent_id = mock_config.CHANNELS.MOUSETRAP
+        mock_message.channel = thread
+        mocked_ban_spammer = mocker.patch(
+            "lib.bot.DiscordBot.ban_spammer", AsyncMock(return_value=None)
+        )
+        mocker.patch("lib.bot.DiscordBot.process_commands")
+
+        await discord_bot.on_message(mock_message)
+
+        mocked_ban_spammer.assert_called_once()
 
     async def test_on_member_join(
         self,

@@ -378,6 +378,58 @@ class TestTasks:
             assert isinstance(cog, Tasks)
             assert mock_start.call_count == 3
 
+    @async_test
+    async def test_cog_unload_safe_when_tasks_preempted(self) -> None:
+        """cog_unload does not AttributeError when loops were already running.
+
+        Regression guard for a bug where `youtube_feeds`/`github_monitor`
+        were only initialized inside the `if not is_running()` branches of
+        `_bootstrap_tasks`. If a task loop is already running at
+        construction time, those branches are skipped, so the attributes
+        must instead be set unconditionally in `__init__`.
+
+        To exercise the preempted path, every loop must report
+        `is_running() == True` from the very first `Tasks.__init__` call on
+        a brand-new instance (an already-initialized cog re-running
+        `__init__` wouldn't reproduce the bug: the attributes would already
+        exist in `__dict__` from the first, non-preempted call). Patching
+        `Loop.is_running` at the class level does not work here: each
+        `@tasks.loop`-decorated attribute is itself a descriptor that lazily
+        builds a fresh `Loop` copy on first access, and that copy's own
+        `__init__` calls `is_running()` internally (via `change_interval`)
+        before the copy is fully constructed - patching it to always return
+        `True` makes `Loop.__init__` crash on its own not-yet-set state.
+
+        So instead: build the cog with `Tasks.__new__` (skipping
+        `__init__`), access each loop attribute once to force the
+        descriptor to build and cache its real `Loop` copy, patch
+        `is_running` on those now-cached instances only, and then run
+        `Tasks.__init__` for real. `_bootstrap_tasks` reads the cached
+        instances (the descriptor doesn't fire again once cached), so every
+        loop reports itself as already running for the whole `__init__`
+        call - reproducing "preempted at construction" without touching
+        `Loop`'s own bootstrapping.
+        """
+        bot = MagicMock()
+
+        cog = Tasks.__new__(Tasks)
+        loop_names = (
+            "clean_channel_members_task",
+            "clean_channel_members_task_dry_run",
+            "monitor_youtube_videos",
+            "monitor_github_activity",
+        )
+        for name in loop_names:
+            loop = getattr(cog, name)  # builds and caches the real Loop copy
+            loop.is_running = MagicMock(return_value=True)
+
+        Tasks.__init__(cog, bot)
+
+        await cog.cog_unload()
+
+        assert cog.github_monitor is None
+        assert cog.youtube_feeds == {}
+
     @pytest.mark.parametrize("dry_run", [True, False])
     @async_test
     async def test_cog_unload(

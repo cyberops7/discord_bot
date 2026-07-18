@@ -4,7 +4,6 @@ import asyncio
 import importlib
 import logging
 import time
-from dataclasses import field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -14,6 +13,7 @@ from discord.ext import commands
 
 from lib.bot_log_context import EmbedFieldDict, LogContext
 from lib.config import config
+from lib.message_format import describe_message_full, summarize_message
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -111,6 +111,38 @@ class DiscordBot(commands.Bot):
 
         logger.info("Bot cogs: %s", list(self.cogs.keys()))
 
+    async def setup_hook(self) -> None:
+        """Load cogs and sync commands during login.
+
+        Runs once per process before the gateway connection. Raising here
+        propagates out of ``bot.start()`` (see lib/api.py), so a fatal startup
+        error terminates the process instead of running half-initialized.
+        """
+        # Fail hard: a bot that cannot load its cogs is broken.
+        try:
+            await self._load_cogs()
+        except Exception:
+            logger.exception("Failed to load cogs during startup")
+            raise
+
+        # Command sync hits Discord's global rate limits; tolerate a transient
+        # failure rather than crash-loop on a 429.
+        logger.info("Syncing commands...")
+        try:
+            synced_commands = await self.tree.sync()
+        except discord.HTTPException:
+            logger.exception("Command sync failed; continuing without a sync")
+            return
+        logger.info(
+            "Synced %d commands: %s",
+            len(synced_commands),
+            ",".join(command.name for command in synced_commands),
+        )
+        logger.info(
+            "Registered commands: %s",
+            ",".join(cmd.name for cmd in self.commands),
+        )
+
     async def on_ready(self) -> None:
         """Called when the bot is ready"""
         logger.info("Bot is ready")
@@ -147,23 +179,6 @@ class DiscordBot(commands.Bot):
             logger.warning(
                 "Could not find log channel with ID %s", config.CHANNELS.BOT_LOGS
             )
-
-        # TODO @cyberops7: add exception catching
-        # Dynamically load all cogs
-        await self._load_cogs()
-
-        # TODO @cyberops7: add exception catching
-        # Sync commands
-        logger.info("Syncing commands...")
-        synced_commands = await self.tree.sync()
-        logger.info(
-            "Synced %d commands: %s",
-            len(synced_commands),
-            ",".join(command.name for command in synced_commands),
-        )
-
-        msg = ",".join([cmd.name for cmd in self.commands])
-        logger.info("Registered commands: %s", msg)
 
         await self.log_bot_event(
             level="INFO",
@@ -254,7 +269,7 @@ class DiscordBot(commands.Bot):
         embed.add_field(name="Level", value=context.level, inline=True)
 
         for embed_field in context.extra_embed_fields:
-            logger.debug("Parsing extra embed field: %s", field)
+            logger.debug("Parsing extra embed field: %s", embed_field)
             if embed_field.get("value"):
                 embed.add_field(
                     name=embed_field.get("name", "Missing embed name"),
@@ -379,7 +394,7 @@ class DiscordBot(commands.Bot):
         action: str,
         reason: str = "No reason provided",
         extra_log_channel: discord.TextChannel | None = None,
-        channel: discord.TextChannel | None = None,
+        channel: discord.TextChannel | discord.Thread | None = None,
         level: str = "WARNING",
         message: discord.Message | None = None,
     ) -> discord.Message | None:
@@ -387,18 +402,10 @@ class DiscordBot(commands.Bot):
         Log a moderation action.
         Specify log_channel to duplicate log to a public channel
         """
-        message_snippet = None
-        if message:
-            max_msg_length = 500
-            message_snippet = (
-                f"{message.content[:max_msg_length]}"
-                f"{'...' if len(message.content) > max_msg_length else ''}"
-            )
-
         extra_embed_fields: list[EmbedFieldDict] = [
             {
                 "name": "Message",
-                "value": message_snippet if message else None,
+                "value": summarize_message(message) if message else None,
                 "inline": False,
             },
         ]
@@ -480,6 +487,8 @@ class DiscordBot(commands.Bot):
             ban_reason: The reason for the ban
             message: The message that triggered the spam detection
         """
+        logger.info("Spam ban payload | %s", describe_message_full(message))
+
         # noinspection PyUnreachableCode
         if not isinstance(message.author, discord.Member):
             logger.warning(
@@ -487,15 +496,14 @@ class DiscordBot(commands.Bot):
             )
             return
 
-        # TODO @cyberops7: test if this needs to include discord.Thread as well
-        if not isinstance(message.channel, discord.TextChannel):
+        if not isinstance(message.channel, discord.TextChannel | discord.Thread):
             logger.warning(
-                "Message channel is not a TextChannel, skipping `ban_spammer`"
+                "Message channel is not a TextChannel or Thread, skipping `ban_spammer`"
             )
             return
 
         user: discord.Member = message.author
-        channel: discord.TextChannel = message.channel
+        channel: discord.TextChannel | discord.Thread = message.channel
 
         logger.info(
             "Processing potential spam from user %s (%s) in channel #%s",
@@ -557,7 +565,6 @@ class DiscordBot(commands.Bot):
             )
 
             # Log the successful ban
-            # TODO @cyberops7: also log to #general-chat
             await self.log_moderation_action(
                 moderator=cast("discord.ClientUser", self.user),  # Bot as moderator
                 target=user,
@@ -621,15 +628,18 @@ class DiscordBot(commands.Bot):
         if message.author == self.user:
             return
 
-        # Ban spammers - no one is supposed to post to #mousetrap
-        if message.channel.id == config.CHANNELS.MOUSETRAP:
+        # Ban spammers - no one should post in #mousetrap or its threads.
+        channel = message.channel
+        in_mousetrap = channel.id == config.CHANNELS.MOUSETRAP or (
+            isinstance(channel, discord.Thread)
+            and channel.parent_id == config.CHANNELS.MOUSETRAP
+        )
+        if in_mousetrap:
             logger.warning(
-                "Received message from %s (%s) in #mousetrap: %s",
+                "Message received in #mousetrap from %s (%s), processing for ban",
                 message.author.display_name,
                 message.author,
-                message.content,
             )
-            logger.warning("Message object: %s", message)
             ban_reason = "Message detected in #mousetrap."
             await self.ban_spammer(ban_reason, message)
 

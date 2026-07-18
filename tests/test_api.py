@@ -2,6 +2,7 @@
 
 import asyncio
 import gc
+import signal
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -16,6 +17,7 @@ from lib.api import (
     AppState,
     HealthCheckResponse,
     StatusResponse,
+    _handle_bot_task_result,
     app,
     lifespan,
 )
@@ -190,6 +192,64 @@ async def test_lifespan_cleanup_on_exception(mocker: MockerFixture) -> None:
         mocker.call.info("Discord bot closed."),
     ]
     mock_logger.assert_has_calls(expected_logs, any_order=False)
+
+
+@async_test
+async def test_handle_bot_task_result_signals_on_exception(
+    mocker: MockerFixture,
+) -> None:
+    """A bot task that died with an exception raises SIGTERM."""
+    mock_raise = mocker.patch("lib.api.signal.raise_signal")
+    mock_logger = mocker.patch("lib.api.logger")
+
+    async def _boom() -> None:
+        msg = "bot died"
+        raise RuntimeError(msg)
+
+    task = asyncio.ensure_future(_boom())
+    await asyncio.gather(task, return_exceptions=True)
+
+    _handle_bot_task_result(task)
+
+    mock_raise.assert_called_once_with(signal.SIGTERM)
+    mock_logger.critical.assert_called_once()
+
+
+@async_test
+async def test_handle_bot_task_result_noop_on_success(
+    mocker: MockerFixture,
+) -> None:
+    """A cleanly-finished bot task does not signal."""
+    mock_raise = mocker.patch("lib.api.signal.raise_signal")
+
+    async def _ok() -> None:
+        return
+
+    task = asyncio.ensure_future(_ok())
+    await asyncio.gather(task, return_exceptions=True)
+
+    _handle_bot_task_result(task)
+
+    mock_raise.assert_not_called()
+
+
+@async_test
+async def test_handle_bot_task_result_noop_on_cancel(
+    mocker: MockerFixture,
+) -> None:
+    """A cancelled bot task (normal shutdown) does not signal."""
+    mock_raise = mocker.patch("lib.api.signal.raise_signal")
+
+    async def _sleep() -> None:
+        await asyncio.sleep(1)
+
+    task = asyncio.ensure_future(_sleep())
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+    _handle_bot_task_result(task)
+
+    mock_raise.assert_not_called()
 
 
 def test_route_favicon(test_api_client: TestClient, mocker: MockerFixture) -> None:
