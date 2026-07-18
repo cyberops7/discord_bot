@@ -936,9 +936,11 @@ class TestDiscordBot:
         with caplog.at_level(logging.INFO):
             await discord_bot.ban_spammer("Test ban reason", mock_message)
 
-        assert len(caplog.records) == 1
-        assert caplog.records[0].levelname == "WARNING"
-        assert caplog.records[0].message == (
+        assert len(caplog.records) == 2
+        assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[1].message == (
             "Message author is not a Member object, skipping `ban_spammer`."
         )
 
@@ -955,9 +957,11 @@ class TestDiscordBot:
         with caplog.at_level(logging.INFO):
             await discord_bot.ban_spammer("Test ban reason", mock_message)
 
-        assert len(caplog.records) == 1
-        assert caplog.records[0].levelname == "WARNING"
-        assert caplog.records[0].message == (
+        assert len(caplog.records) == 2
+        assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[1].message == (
             "Message channel is not a TextChannel or Thread, skipping `ban_spammer`"
         )
 
@@ -1013,16 +1017,18 @@ class TestDiscordBot:
 
         mocked_has_privileged_role.assert_called_once()
         mocked_log_to_channel.assert_called_once()
-        assert len(caplog.records) == 2
+        assert len(caplog.records) == 3
         assert caplog.records[0].levelname == "INFO"
-        assert (
-            caplog.records[0].message
-            == f"Processing potential spam from user {mock_user.display_name} "
-            f"({mock_user}) in channel #{mock_message.channel.name}"
-        )
+        assert caplog.records[0].message.startswith("Spam ban payload")
         assert caplog.records[1].levelname == "INFO"
         assert (
             caplog.records[1].message
+            == f"Processing potential spam from user {mock_user.display_name} "
+            f"({mock_user}) in channel #{mock_message.channel.name}"
+        )
+        assert caplog.records[2].levelname == "INFO"
+        assert (
+            caplog.records[2].message
             == f"User {mock_user.display_name} ({mock_user}) has privileged role, "
             f"not banning"
         )
@@ -1051,22 +1057,24 @@ class TestDiscordBot:
         mocked_has_privileged_role.assert_called_once()
         mocked_ban.assert_called_once()
         mocked_log_moderation_action.assert_called_once()
-        assert len(caplog.records) == 3
+        assert len(caplog.records) == 4
         assert caplog.records[0].levelname == "INFO"
-        assert (
-            caplog.records[0].message
-            == f"Processing potential spam from user {mock_user.display_name} "
-            f"({mock_user}) in channel #{mock_message.channel.name}"
-        )
-        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "INFO"
         assert (
             caplog.records[1].message
-            == f"Banning user {mock_user.display_name} ({mock_user}) for spam in "
-            f"channel #{mock_message.channel.name}"
+            == f"Processing potential spam from user {mock_user.display_name} "
+            f"({mock_user}) in channel #{mock_message.channel.name}"
         )
         assert caplog.records[2].levelname == "WARNING"
         assert (
             caplog.records[2].message
+            == f"Banning user {mock_user.display_name} ({mock_user}) for spam in "
+            f"channel #{mock_message.channel.name}"
+        )
+        assert caplog.records[3].levelname == "WARNING"
+        assert (
+            caplog.records[3].message
             == f"Successfully banned user {mock_user.display_name} ({mock_user}) "
             f"for spam"
         )
@@ -1100,21 +1108,23 @@ class TestDiscordBot:
         mocked_log_error.assert_called_once()
 
         # Check log messages
-        assert len(caplog.records) == 3
+        assert len(caplog.records) == 4
         assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "INFO"
         assert (
-            caplog.records[0].message
+            caplog.records[1].message
             == f"Processing potential spam from user {mock_user.display_name} "
             f"({mock_user}) in channel #{mock_message.channel.name}"
         )
-        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[2].levelname == "WARNING"
         assert (
-            caplog.records[1].message
+            caplog.records[2].message
             == f"Banning user {mock_user.display_name} ({mock_user}) for spam in "
             f"channel #{mock_message.channel.name}"
         )
-        assert caplog.records[2].levelname == "ERROR"
-        assert "Bot lacks permission to ban user" in caplog.records[2].message
+        assert caplog.records[3].levelname == "ERROR"
+        assert "Bot lacks permission to ban user" in caplog.records[3].message
 
     @async_test
     async def test_ban_spammer_http_exception(
@@ -1144,21 +1154,23 @@ class TestDiscordBot:
         mocked_log_error.assert_called_once()
 
         # Check log messages
-        assert len(caplog.records) == 3
+        assert len(caplog.records) == 4
         assert caplog.records[0].levelname == "INFO"
+        assert caplog.records[0].message.startswith("Spam ban payload")
+        assert caplog.records[1].levelname == "INFO"
         assert (
-            caplog.records[0].message
+            caplog.records[1].message
             == f"Processing potential spam from user {mock_user.display_name} "
             f"({mock_user}) in channel #{mock_message.channel.name}"
         )
-        assert caplog.records[1].levelname == "WARNING"
+        assert caplog.records[2].levelname == "WARNING"
         assert (
-            caplog.records[1].message
+            caplog.records[2].message
             == f"Banning user {mock_user.display_name} ({mock_user}) for spam in "
             f"channel #{mock_message.channel.name}"
         )
-        assert caplog.records[2].levelname == "ERROR"
-        assert "HTTP error while banning user" in caplog.records[2].message
+        assert caplog.records[3].levelname == "ERROR"
+        assert "HTTP error while banning user" in caplog.records[3].message
 
     @async_test
     async def test_on_ready(

@@ -13,7 +13,7 @@ from discord.ext import commands
 
 from lib.bot_log_context import EmbedFieldDict, LogContext
 from lib.config import config
-from lib.message_format import summarize_message
+from lib.message_format import describe_message_full, summarize_message
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -472,6 +472,8 @@ class DiscordBot(commands.Bot):
             ban_reason: The reason for the ban
             message: The message that triggered the spam detection
         """
+        logger.info("Spam ban payload | %s", describe_message_full(message))
+
         # noinspection PyUnreachableCode
         if not isinstance(message.author, discord.Member):
             logger.warning(
@@ -548,7 +550,6 @@ class DiscordBot(commands.Bot):
             )
 
             # Log the successful ban
-            # TODO @cyberops7: also log to #general-chat
             await self.log_moderation_action(
                 moderator=cast("discord.ClientUser", self.user),  # Bot as moderator
                 target=user,
