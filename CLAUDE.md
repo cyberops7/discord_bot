@@ -362,6 +362,23 @@ The config system supports:
 - Test markers available: `@pytest.mark.no_mock_config` to exclude
   mock_config fixture
 - Environment variables for pytest theme configured in pyproject.toml
+- A module that reads `config` at call time must be added to the
+  `mock_config` patch list in `tests/conftest.py` (the `with (...)` block), or
+  its tests will hit the real config singleton
+
+## discord.py Gotchas
+
+- **Event-handler exceptions are swallowed.** discord.py's dispatcher routes
+  exceptions raised in event handlers (`on_ready`, `on_message`, etc.) to
+  `on_error`, which logs and continues — a `raise` there does NOT crash the
+  bot. Do startup validation that must fail-fast in `setup_hook` (its
+  exceptions propagate out of `bot.start()`), and surface a dead bot task
+  through the FastAPI lifespan (see `_handle_bot_task_result` in `lib/api.py`,
+  which sends `SIGTERM` so the pod restarts).
+- **Widening a channel type to include `discord.Thread`** requires widening
+  every sink in lockstep: `ban_spammer`'s local `channel`,
+  `log_moderation_action`'s `channel` parameter, and `LogContext.channel`.
+  `LogContext.log_channel` stays `TextChannel` (the #bot-logs channel).
 
 ## Docker
 
