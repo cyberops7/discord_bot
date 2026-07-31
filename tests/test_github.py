@@ -717,6 +717,65 @@ async def test_get_new_events_fetch_failure_keeps_cursor(
 
 
 @async_test
+async def test_get_new_events_includes_reviews(monitor: GitHubMonitor) -> None:
+    # Open PR created before startup → no open/close event, only its review.
+    with (
+        patch.object(
+            monitor,
+            "_fetch_updated_issues",
+            new=AsyncMock(return_value=[_open_pr(42)]),
+        ),
+        patch.object(
+            monitor,
+            "_fetch_pr_reviews",
+            new=AsyncMock(return_value={42: [_review_node(database_id=1)]}),
+        ),
+    ):
+        events = await monitor.get_new_events()
+    assert [e.kind for e in events] == ["PR_REVIEW_CHANGES_REQUESTED"]
+
+
+@async_test
+async def test_get_new_events_closed_pr_not_reviewed(
+    monitor: GitHubMonitor,
+) -> None:
+    fetch_reviews = AsyncMock(return_value={})
+    with (
+        patch.object(
+            monitor,
+            "_fetch_updated_issues",
+            new=AsyncMock(return_value=[_pr(42, merged=False)]),
+        ),
+        patch.object(monitor, "_fetch_pr_reviews", new=fetch_reviews),
+        patch.object(
+            monitor,
+            "_resolve_pr_close_details",
+            new=AsyncMock(return_value=_PRCloseDetails((), "", "")),
+        ),
+    ):
+        events = await monitor.get_new_events()
+    assert all(not e.kind.startswith("PR_REVIEW") for e in events)
+    fetch_reviews.assert_not_awaited()
+
+
+@async_test
+async def test_get_new_events_open_issue_not_reviewed(
+    monitor: GitHubMonitor,
+) -> None:
+    fetch_reviews = AsyncMock(return_value={})
+    with (
+        patch.object(
+            monitor,
+            "_fetch_updated_issues",
+            new=AsyncMock(return_value=[_issue()]),
+        ),
+        patch.object(monitor, "_fetch_pr_reviews", new=fetch_reviews),
+    ):
+        await monitor.get_new_events()
+    fetch_reviews.assert_not_awaited()
+
+
+@async_test
 async def test_resolve_issue_closers_empty_returns_empty(
     monitor: GitHubMonitor,
 ) -> None:

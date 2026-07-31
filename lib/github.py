@@ -545,6 +545,12 @@ class GitHubMonitor:
                 )
 
         await self._enqueue_non_pr_events(fresh, combined_numbers, plan)
+        open_prs = [
+            issue
+            for issue in issues
+            if "pull_request" in issue and issue.get("state") == "open"
+        ]
+        plan.extend(await self._derive_review_events(open_prs))
         plan.sort(key=lambda e: (e.number, e.kind))
         return plan
 
