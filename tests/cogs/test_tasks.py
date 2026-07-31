@@ -1774,6 +1774,23 @@ class TestGitHubMonitor:
         embed = tasks_cog._build_github_embed(event)
         assert embed.author.name == "unknown → closer"
 
+    def test_build_embed_review(self, tasks_cog: Tasks) -> None:
+        url = "https://github.com/JamesTurland/JimsGarage/pull/42#r1"
+        event = _gh_event(
+            kind="PR_REVIEW_CHANGES_REQUESTED",
+            number=42,
+            title="Fix the thing",
+            url=url,
+            author_login="reviewer",
+            author_avatar_url="https://avatars/7",
+        )
+        embed = tasks_cog._build_github_embed(event)
+        assert embed.title == "🟠 Changes requested on #42"
+        assert embed.description == f"**[Fix the thing]({url})**"
+        assert embed.author.name == "reviewer"
+        assert embed.thumbnail.url == "https://avatars/7"
+        assert embed.fields == []
+
     @async_test
     async def test_before_loop_initializes_and_smoke_posts(
         self, tasks_cog: Tasks, mock_config: MagicMock
