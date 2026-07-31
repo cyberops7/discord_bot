@@ -18,6 +18,7 @@ from lib.github import (
     GitHubMonitor,
     _parse_dt,
     _PRCloseDetails,
+    _ReviewNode,
 )
 from tests.utils import async_test
 
@@ -880,3 +881,142 @@ async def test_get_latest_activity_open_has_no_closer(
     assert event is not None
     assert event.closer_login == ""
     assert event.closer_avatar_url == ""
+
+
+def _reviews_response(
+    reviews_by_pr: dict[int, list[dict[str, object]]],
+) -> dict[str, object]:
+    repo: dict[str, object] = {
+        f"pr{n}": {"reviews": {"nodes": nodes}} for n, nodes in reviews_by_pr.items()
+    }
+    return {"data": {"repository": repo}}
+
+
+def _raw_review(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "databaseId": 1,
+        "state": "CHANGES_REQUESTED",
+        "submittedAt": AFTER,
+        "url": "https://github.com/o/r/pull/42#pullrequestreview-1",
+        "author": {"login": "rev", "avatarUrl": "https://avatars/9"},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_parse_review_node_valid(monitor: GitHubMonitor) -> None:
+    node = monitor._parse_review_node(_raw_review())
+    assert node == _ReviewNode(
+        database_id=1,
+        state="CHANGES_REQUESTED",
+        submitted_at=AFTER,
+        url="https://github.com/o/r/pull/42#pullrequestreview-1",
+        author_login="rev",
+        author_avatar_url="https://avatars/9",
+    )
+
+
+def test_parse_review_node_null_author(monitor: GitHubMonitor) -> None:
+    node = monitor._parse_review_node(_raw_review(author=None))
+    assert node is not None
+    assert node.author_login == ""
+    assert node.author_avatar_url == ""
+
+
+def test_parse_review_node_non_string_url(monitor: GitHubMonitor) -> None:
+    node = monitor._parse_review_node(_raw_review(url=999))
+    assert node is not None
+    assert node.url == ""
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"state": "APPROVED", "submittedAt": AFTER},  # no databaseId
+        {"databaseId": 1, "submittedAt": AFTER},  # no state
+        {"databaseId": 1, "state": "APPROVED"},  # no submittedAt
+        {"databaseId": "x", "state": "APPROVED", "submittedAt": AFTER},  # bad id
+        "not-a-dict",
+    ],
+)
+def test_parse_review_node_rejects_bad(monitor: GitHubMonitor, raw: object) -> None:
+    assert monitor._parse_review_node(raw) is None
+
+
+@async_test
+async def test_fetch_pr_reviews_parses(monitor: GitHubMonitor) -> None:
+    session = MagicMock()
+    session.post = MagicMock(
+        return_value=_mock_response(_reviews_response({42: [_raw_review()]}))
+    )
+    monitor._session = session
+    result = await monitor._fetch_pr_reviews([42])
+    assert result[42][0].database_id == 1
+    assert result[42][0].state == "CHANGES_REQUESTED"
+
+
+@async_test
+async def test_fetch_pr_reviews_empty_numbers(monitor: GitHubMonitor) -> None:
+    assert await monitor._fetch_pr_reviews([]) == {}
+
+
+@async_test
+async def test_fetch_pr_reviews_no_token() -> None:
+    m = GitHubMonitor(repo="a/b", token="", started_at=START)
+    m._session = MagicMock()
+    assert await m._fetch_pr_reviews([42]) == {}
+
+
+@async_test
+async def test_fetch_pr_reviews_no_session(monitor: GitHubMonitor) -> None:
+    monitor._session = None
+    assert await monitor._fetch_pr_reviews([42]) == {}
+
+
+@async_test
+async def test_fetch_pr_reviews_client_error(monitor: GitHubMonitor) -> None:
+    session = MagicMock()
+    session.post = MagicMock(side_effect=aiohttp.ClientError("boom"))
+    monitor._session = session
+    assert await monitor._fetch_pr_reviews([42]) == {}
+
+
+@async_test
+async def test_fetch_pr_reviews_logs_graphql_errors(
+    monitor: GitHubMonitor, caplog: pytest.LogCaptureFixture
+) -> None:
+    session = MagicMock()
+    session.post = MagicMock(
+        return_value=_mock_response({"data": None, "errors": [{"message": "bad"}]})
+    )
+    monitor._session = session
+    with caplog.at_level(logging.WARNING):
+        result = await monitor._fetch_pr_reviews([42])
+    assert result == {42: []}
+    assert any(
+        "GraphQL errors resolving PR reviews" in r.message for r in caplog.records
+    )
+
+
+@async_test
+async def test_fetch_pr_reviews_missing_pr_node(monitor: GitHubMonitor) -> None:
+    session = MagicMock()
+    session.post = MagicMock(return_value=_mock_response({"data": {"repository": {}}}))
+    monitor._session = session
+    assert await monitor._fetch_pr_reviews([42]) == {42: []}
+
+
+@async_test
+async def test_fetch_pr_reviews_page_cap_warns(
+    monitor: GitHubMonitor, caplog: pytest.LogCaptureFixture
+) -> None:
+    nodes = [_raw_review(databaseId=i) for i in range(_REVIEWS_PER_PR)]
+    session = MagicMock()
+    session.post = MagicMock(
+        return_value=_mock_response(_reviews_response({42: nodes}))
+    )
+    monitor._session = session
+    with caplog.at_level(logging.WARNING):
+        result = await monitor._fetch_pr_reviews([42])
+    assert len(result[42]) == _REVIEWS_PER_PR
+    assert any("review page cap" in r.message for r in caplog.records)

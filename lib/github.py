@@ -102,6 +102,18 @@ class _PRCloseDetails:
     closer_avatar_url: str
 
 
+@dataclass(frozen=True)
+class _ReviewNode:
+    """A parsed PR review node from the GraphQL `reviews` connection."""
+
+    database_id: int
+    state: str
+    submitted_at: str
+    url: str
+    author_login: str
+    author_avatar_url: str
+
+
 def _parse_dt(value: str | None) -> datetime.datetime | None:
     """Parse a GitHub ISO-8601 timestamp (with `Z`) into an aware datetime."""
     if not value:
@@ -145,6 +157,30 @@ class GitHubMonitor:
         return (
             login if isinstance(login, str) else "",
             avatar if isinstance(avatar, str) else "",
+        )
+
+    def _parse_review_node(self, node: object) -> _ReviewNode | None:
+        """Parse one GraphQL review node; return None if unusable."""
+        if not isinstance(node, dict):
+            return None
+        database_id = node.get("databaseId")
+        submitted_at = node.get("submittedAt")
+        state = node.get("state")
+        url = node.get("url")
+        if not isinstance(database_id, int):
+            return None
+        if not isinstance(submitted_at, str):
+            return None
+        if not isinstance(state, str):
+            return None
+        login, avatar = self._closer_from_actor(node.get("author"))
+        return _ReviewNode(
+            database_id=database_id,
+            state=state,
+            submitted_at=submitted_at,
+            url=url if isinstance(url, str) else "",
+            author_login=login,
+            author_avatar_url=avatar,
         )
 
     @staticmethod
@@ -348,6 +384,59 @@ class GitHubMonitor:
             tnodes = timeline.get("nodes") or []
             actor = tnodes[-1].get("actor") if tnodes else None
             result[number] = self._closer_from_actor(actor)
+        return result
+
+    async def _fetch_pr_reviews(
+        self, pr_numbers: list[int]
+    ) -> dict[int, list[_ReviewNode]]:
+        """Batch-fetch recent reviews for open PRs via one aliased query.
+
+        Mirrors `_resolve_issue_closers`: one GraphQL call per poll regardless
+        of how many PRs were touched, bounding secondary-rate-limit risk.
+        """
+        if not pr_numbers or not self._token or self._session is None:
+            return {}
+        owner, _, name = self._repo.partition("/")
+        fields = "".join(
+            f"pr{n}:pullRequest(number:{n})"
+            f"{{reviews(last:{_REVIEWS_PER_PR})"
+            "{nodes{databaseId state submittedAt url author{login avatarUrl}}}}}"
+            for n in pr_numbers
+        )
+        query = (
+            "query($owner:String!,$name:String!){"
+            "repository(owner:$owner,name:$name){"
+            f"{fields}"
+            "}}"
+        )
+        payload = {"query": query, "variables": {"owner": owner, "name": name}}
+        try:
+            async with self._session.post(GITHUB_GRAPHQL_URL, json=payload) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except aiohttp.ClientError:
+            logger.exception("GraphQL request failed for PR reviews")
+            return {}
+        if data and data.get("errors"):
+            logger.warning("GraphQL errors resolving PR reviews: %s", data["errors"])
+        repository = ((data or {}).get("data") or {}).get("repository") or {}
+        result: dict[int, list[_ReviewNode]] = {}
+        for number in pr_numbers:
+            node = repository.get(f"pr{number}") or {}
+            reviews = node.get("reviews") or {}
+            nodes = reviews.get("nodes") or []
+            if len(nodes) >= _REVIEWS_PER_PR:
+                logger.warning(
+                    "PR #%d returned the review page cap (%d); older reviews "
+                    "may be missed",
+                    number,
+                    _REVIEWS_PER_PR,
+                )
+            result[number] = [
+                parsed
+                for raw in nodes
+                if (parsed := self._parse_review_node(raw)) is not None
+            ]
         return result
 
     async def _resolve_closer(self, event: GitHubActivityEvent) -> tuple[str, str]:
