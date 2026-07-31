@@ -143,17 +143,17 @@ run_check "Pyrefly Type Check" \
 #    "pyright"
 
 run_docker_check "Dockerfile Lint (Hadolint) - \/docker/Dockerfile\"" \
-    "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile" \
+    "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint:v2.15.0 < docker/Dockerfile" \
     "" \
-    "ghcr.io/hadolint/hadolint"
+    "ghcr.io/hadolint/hadolint:v2.15.0"
 
 run_docker_check "Dockerfile Lint (Hadolint) - \"docker/Dockerfile-test\"" \
-    "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint < docker/Dockerfile-test"
+    "docker run --rm -i -v ./.hadolint.yaml:/.config/hadolint.yaml ghcr.io/hadolint/hadolint:v2.15.0 < docker/Dockerfile-test"
 
 run_docker_check "Markdown Lint" \
-    "docker run --rm -i --platform linux/amd64 -v ./:/data markdownlint/markdownlint ./ .github/ docs/" \
+    "docker run --rm -i --platform linux/amd64 -v ./:/data markdownlint/markdownlint:0.17.0 ./ .github/ docs/" \
     "" \
-    "markdownlint/markdownlint"
+    "markdownlint/markdownlint:0.17.0"
 
 run_check "ShellCheck Lint" \
     "shellcheck -x \"${REPO_DIR}\"/scripts/*.sh"

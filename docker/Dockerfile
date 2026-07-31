@@ -54,12 +54,12 @@ COPY --chown=appuser:appgroup ./ $APP_HOME
 # Set working directory
 WORKDIR $APP_HOME
 
-# Switch to non-root user
-USER appuser
+# Switch to non-root user (numeric uid:gid matches the appuser/appgroup above)
+USER 10001:10001
 
 # Use full path to venv python to ensure venv is used
 CMD ["/app/.venv/bin/python", "main.py"]
 
 # Python-based healthcheck using stdlib
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD /app/.venv/bin/python docker/healthcheck.py
+    CMD ["/app/.venv/bin/python", "docker/healthcheck.py"]
