@@ -27,7 +27,7 @@ RUN apk -U upgrade --no-cache && \
         vim
 
 # Install `uv` (pinned; keep in sync with .pre-commit-config.yaml and CI)
-COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.0 /uv /uvx /bin/
 
 # Copy files
 RUN mkdir -p $APP_HOME
@@ -44,8 +44,8 @@ RUN addgroup --system --gid 10001 appgroup && \
 # Set working directory
 WORKDIR $APP_HOME
 
-# Switch to non-root user
-USER appuser
+# Switch to non-root user (numeric uid:gid matches the appuser/appgroup above)
+USER 10001:10001
 
 # Create the venv and install both runtime and test dependencies
 RUN uv sync --frozen --no-cache --no-default-groups --group test && \

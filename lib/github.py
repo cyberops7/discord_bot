@@ -22,11 +22,27 @@ EVENT_RENDER: dict[str, tuple[str, int, str]] = {
     "PR_OPENED": ("🟢", 0x2ECC71, "New PR"),
     "PR_MERGED": ("🟣", 0x9B59B6, "PR merged"),
     "PR_CLOSED": ("🔴", 0xE74C3C, "PR closed"),
+    "PR_REVIEW_CHANGES_REQUESTED": ("🟠", 0xE67E22, "Changes requested on"),
+    "PR_REVIEW_APPROVED": ("✅", 0x2ECC71, "Approved"),
+    "PR_REVIEW_COMMENTED": ("💬", 0x95A5A6, "Reviewed"),
 }
 
 _ISSUE_CLOSE_KINDS: frozenset[str] = frozenset({"ISSUE_COMPLETED", "ISSUE_NOT_PLANNED"})
 _PR_CLOSE_KINDS: frozenset[str] = frozenset({"PR_MERGED", "PR_CLOSED"})
 CLOSE_KINDS: frozenset[str] = _ISSUE_CLOSE_KINDS | _PR_CLOSE_KINDS
+_PR_REVIEW_KINDS: frozenset[str] = frozenset(
+    {
+        "PR_REVIEW_CHANGES_REQUESTED",
+        "PR_REVIEW_APPROVED",
+        "PR_REVIEW_COMMENTED",
+    }
+)
+_REVIEW_STATE_TO_KIND: dict[str, str] = {
+    "CHANGES_REQUESTED": "PR_REVIEW_CHANGES_REQUESTED",
+    "APPROVED": "PR_REVIEW_APPROVED",
+    "COMMENTED": "PR_REVIEW_COMMENTED",
+}
+_REVIEWS_PER_PR: int = 50
 _CLOSED_ACTOR_FRAGMENT: str = (
     "timelineItems(itemTypes:[CLOSED_EVENT],last:1)"
     "{nodes{... on ClosedEvent{actor{login avatarUrl}}}}"
@@ -86,6 +102,18 @@ class _PRCloseDetails:
     closer_avatar_url: str
 
 
+@dataclass(frozen=True)
+class _ReviewNode:
+    """A parsed PR review node from the GraphQL `reviews` connection."""
+
+    database_id: int
+    state: str
+    submitted_at: str
+    url: str
+    author_login: str
+    author_avatar_url: str
+
+
 def _parse_dt(value: str | None) -> datetime.datetime | None:
     """Parse a GitHub ISO-8601 timestamp (with `Z`) into an aware datetime."""
     if not value:
@@ -131,6 +159,30 @@ class GitHubMonitor:
             avatar if isinstance(avatar, str) else "",
         )
 
+    def _parse_review_node(self, node: object) -> _ReviewNode | None:
+        """Parse one GraphQL review node; return None if unusable."""
+        if not isinstance(node, dict):
+            return None
+        database_id = node.get("databaseId")
+        submitted_at = node.get("submittedAt")
+        state = node.get("state")
+        url = node.get("url")
+        if not isinstance(database_id, int):
+            return None
+        if not isinstance(submitted_at, str):
+            return None
+        if not isinstance(state, str):
+            return None
+        login, avatar = self._closer_from_actor(node.get("author"))
+        return _ReviewNode(
+            database_id=database_id,
+            state=state,
+            submitted_at=submitted_at,
+            url=url if isinstance(url, str) else "",
+            author_login=login,
+            author_avatar_url=avatar,
+        )
+
     @staticmethod
     def _make_event(kind: str, issue: GitHubIssue) -> GitHubActivityEvent:
         author = issue.get("user")
@@ -144,6 +196,23 @@ class GitHubMonitor:
             author_login=author["login"] if author else "",
             author_avatar_url=author["avatar_url"] if author else "",
             is_pr="pull_request" in issue,
+        )
+
+    @staticmethod
+    def _make_review_event(
+        kind: str, issue: GitHubIssue, node: _ReviewNode
+    ) -> GitHubActivityEvent:
+        """Build a review activity event from a REST PR item + a review node."""
+        number = issue["number"]
+        return GitHubActivityEvent(
+            key=f"review:{number}:{node.database_id}",
+            kind=kind,
+            number=number,
+            title=issue["title"],
+            url=node.url,
+            author_login=node.author_login,
+            author_avatar_url=node.author_avatar_url,
+            is_pr=True,
         )
 
     def _derive_events(self, issues: list[GitHubIssue]) -> list[GitHubActivityEvent]:
@@ -334,6 +403,59 @@ class GitHubMonitor:
             result[number] = self._closer_from_actor(actor)
         return result
 
+    async def _fetch_pr_reviews(
+        self, pr_numbers: list[int]
+    ) -> dict[int, list[_ReviewNode]]:
+        """Batch-fetch recent reviews for open PRs via one aliased query.
+
+        Mirrors `_resolve_issue_closers`: one GraphQL call per poll regardless
+        of how many PRs were touched, bounding secondary-rate-limit risk.
+        """
+        if not pr_numbers or not self._token or self._session is None:
+            return {}
+        owner, _, name = self._repo.partition("/")
+        fields = "".join(
+            f"pr{n}:pullRequest(number:{n})"
+            f"{{reviews(last:{_REVIEWS_PER_PR})"
+            "{nodes{databaseId state submittedAt url author{login avatarUrl}}}}}"
+            for n in pr_numbers
+        )
+        query = (
+            "query($owner:String!,$name:String!){"
+            "repository(owner:$owner,name:$name){"
+            f"{fields}"
+            "}}"
+        )
+        payload = {"query": query, "variables": {"owner": owner, "name": name}}
+        try:
+            async with self._session.post(GITHUB_GRAPHQL_URL, json=payload) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except aiohttp.ClientError:
+            logger.exception("GraphQL request failed for PR reviews")
+            return {}
+        if data and data.get("errors"):
+            logger.warning("GraphQL errors resolving PR reviews: %s", data["errors"])
+        repository = ((data or {}).get("data") or {}).get("repository") or {}
+        result: dict[int, list[_ReviewNode]] = {}
+        for number in pr_numbers:
+            node = repository.get(f"pr{number}") or {}
+            reviews = node.get("reviews") or {}
+            nodes = reviews.get("nodes") or []
+            if len(nodes) >= _REVIEWS_PER_PR:
+                logger.warning(
+                    "PR #%d returned the review page cap (%d); older reviews "
+                    "may be missed",
+                    number,
+                    _REVIEWS_PER_PR,
+                )
+            result[number] = [
+                parsed
+                for raw in nodes
+                if (parsed := self._parse_review_node(raw)) is not None
+            ]
+        return result
+
     async def _resolve_closer(self, event: GitHubActivityEvent) -> tuple[str, str]:
         """Resolve (login, avatar_url) of who closed this event; empty if none."""
         if event.is_pr and event.kind in _PR_CLOSE_KINDS:
@@ -345,6 +467,37 @@ class GitHubMonitor:
             closers = await self._resolve_issue_closers([event.number])
             return closers.get(event.number, ("", ""))
         return "", ""
+
+    async def _derive_review_events(
+        self, open_prs: list[GitHubIssue]
+    ) -> list[GitHubActivityEvent]:
+        """Fetch and gate new reviews on open PRs into postable events.
+
+        Runs after the open/close dedup in `get_new_events`, so it manages
+        `self._seen` itself. Reviews are gated on the toggle, a
+        `submitted_at > _started_at` startup cutoff, and the dedup key —
+        deliberately NOT on `_last_checked` (already advanced this poll).
+        """
+        if not open_prs:
+            return []
+        reviews_by_pr = await self._fetch_pr_reviews(
+            [issue["number"] for issue in open_prs]
+        )
+        events: list[GitHubActivityEvent] = []
+        for issue in open_prs:
+            for node in reviews_by_pr.get(issue["number"], []):
+                kind = _REVIEW_STATE_TO_KIND.get(node.state)
+                if kind is None or not self._toggle_on(kind):
+                    continue
+                submitted = _parse_dt(node.submitted_at)
+                if submitted is None or submitted <= self._started_at:
+                    continue
+                event = self._make_review_event(kind, issue, node)
+                if event.key in self._seen:
+                    continue
+                self._seen.add(event.key)
+                events.append(event)
+        return events
 
     async def get_new_events(self) -> list[GitHubActivityEvent]:
         """Poll, derive, gate, combine linked closes, and return postables."""
@@ -392,6 +545,12 @@ class GitHubMonitor:
                 )
 
         await self._enqueue_non_pr_events(fresh, combined_numbers, plan)
+        open_prs = [
+            issue
+            for issue in issues
+            if "pull_request" in issue and issue.get("state") == "open"
+        ]
+        plan.extend(await self._derive_review_events(open_prs))
         plan.sort(key=lambda e: (e.number, e.kind))
         return plan
 

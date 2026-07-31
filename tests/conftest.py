@@ -70,7 +70,7 @@ def mock_channel(channel_id: int = 999) -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
-def mock_config(
+def mock_config(  # noqa: PLR0915 fixture sets many mock attrs
     request: pytest.FixtureRequest,
 ) -> Generator[MagicMock, None, None]:  # noqa: UP043 unnecessary default type args
     """Mock the config object for all imports"""
@@ -122,6 +122,9 @@ def mock_config(
     mock_cfg.GITHUB.EVENTS.PR_OPENED = True
     mock_cfg.GITHUB.EVENTS.PR_MERGED = True
     mock_cfg.GITHUB.EVENTS.PR_CLOSED = True
+    mock_cfg.GITHUB.EVENTS.PR_REVIEW_CHANGES_REQUESTED = True
+    mock_cfg.GITHUB.EVENTS.PR_REVIEW_APPROVED = False
+    mock_cfg.GITHUB.EVENTS.PR_REVIEW_COMMENTED = False
 
     # Store original singleton state
     original_instance = Config._instance

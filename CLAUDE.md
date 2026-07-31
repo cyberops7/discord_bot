@@ -340,6 +340,15 @@ All PRs must pass:
     `.pre-commit-config.yaml`, `.github/workflows/check-test.yaml`, and the
     `ghcr.io/astral-sh/uv` tag in both `docker/Dockerfile` and
     `docker/Dockerfile-test`
+15. **Docker linter image pins**: The docker-based linters in
+    `scripts/check.sh` are pinned to explicit version tags —
+    `ghcr.io/hadolint/hadolint:v2.15.0` and `markdownlint/markdownlint:0.17.0`
+    — so local runs and CI resolve to the identical image and can't silently
+    drift on `:latest` (an unpinned image once passed locally on a stale cache
+    while failing CI on a fresh pull). Both references for each image live only
+    in `scripts/check.sh` (CI runs the same script), so a bump is a single-file
+    change — update the `docker run` tag and the freshness-check arg together,
+    and re-run `uv run invoke check` to confirm the new version still passes.
 
 ## Configuration System
 
