@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.source=https://github.com/cyberops7/discord_bot
 RUN apk add --no-cache binutils
 
 # Install uv (pinned; keep in sync with .pre-commit-config.yaml and CI)
-COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.0 /uv /bin/
 
 # Set up build directory
 WORKDIR /build
