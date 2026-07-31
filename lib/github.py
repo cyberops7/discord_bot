@@ -198,6 +198,23 @@ class GitHubMonitor:
             is_pr="pull_request" in issue,
         )
 
+    @staticmethod
+    def _make_review_event(
+        kind: str, issue: GitHubIssue, node: _ReviewNode
+    ) -> GitHubActivityEvent:
+        """Build a review activity event from a REST PR item + a review node."""
+        number = issue["number"]
+        return GitHubActivityEvent(
+            key=f"review:{number}:{node.database_id}",
+            kind=kind,
+            number=number,
+            title=issue["title"],
+            url=node.url,
+            author_login=node.author_login,
+            author_avatar_url=node.author_avatar_url,
+            is_pr=True,
+        )
+
     def _derive_events(self, issues: list[GitHubIssue]) -> list[GitHubActivityEvent]:
         """Derive candidate events, keeping only those after startup time."""
         events: list[GitHubActivityEvent] = []
@@ -450,6 +467,37 @@ class GitHubMonitor:
             closers = await self._resolve_issue_closers([event.number])
             return closers.get(event.number, ("", ""))
         return "", ""
+
+    async def _derive_review_events(
+        self, open_prs: list[GitHubIssue]
+    ) -> list[GitHubActivityEvent]:
+        """Fetch and gate new reviews on open PRs into postable events.
+
+        Runs after the open/close dedup in `get_new_events`, so it manages
+        `self._seen` itself. Reviews are gated on the toggle, a
+        `submitted_at > _started_at` startup cutoff, and the dedup key —
+        deliberately NOT on `_last_checked` (already advanced this poll).
+        """
+        if not open_prs:
+            return []
+        reviews_by_pr = await self._fetch_pr_reviews(
+            [issue["number"] for issue in open_prs]
+        )
+        events: list[GitHubActivityEvent] = []
+        for issue in open_prs:
+            for node in reviews_by_pr.get(issue["number"], []):
+                kind = _REVIEW_STATE_TO_KIND.get(node.state)
+                if kind is None or not self._toggle_on(kind):
+                    continue
+                submitted = _parse_dt(node.submitted_at)
+                if submitted is None or submitted <= self._started_at:
+                    continue
+                event = self._make_review_event(kind, issue, node)
+                if event.key in self._seen:
+                    continue
+                self._seen.add(event.key)
+                events.append(event)
+        return events
 
     async def get_new_events(self) -> list[GitHubActivityEvent]:
         """Poll, derive, gate, combine linked closes, and return postables."""

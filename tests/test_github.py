@@ -1020,3 +1020,150 @@ async def test_fetch_pr_reviews_page_cap_warns(
         result = await monitor._fetch_pr_reviews([42])
     assert len(result[42]) == _REVIEWS_PER_PR
     assert any("review page cap" in r.message for r in caplog.records)
+
+
+def _review_node(**overrides: object) -> _ReviewNode:
+    defaults: dict[str, object] = {
+        "database_id": 1,
+        "state": "CHANGES_REQUESTED",
+        "submitted_at": AFTER,
+        "url": "https://github.com/JamesTurland/JimsGarage/pull/42#r1",
+        "author_login": "rev",
+        "author_avatar_url": "https://avatars/9",
+    }
+    defaults.update(overrides)
+    return _ReviewNode(**defaults)  # type: ignore[arg-type]
+
+
+def _open_pr(number: int = 42) -> GitHubIssue:
+    return _issue(
+        number=number,
+        title=f"PR {number}",
+        html_url=f"https://github.com/JamesTurland/JimsGarage/pull/{number}",
+        state="open",
+        created_at=BEFORE,
+        pull_request={},
+    )
+
+
+@async_test
+async def test_derive_review_changes_requested(monitor: GitHubMonitor) -> None:
+    with patch.object(
+        monitor,
+        "_fetch_pr_reviews",
+        new=AsyncMock(return_value={42: [_review_node()]}),
+    ):
+        events = await monitor._derive_review_events([_open_pr(42)])
+    assert len(events) == 1
+    event = events[0]
+    assert event.kind == "PR_REVIEW_CHANGES_REQUESTED"
+    assert event.number == 42
+    assert event.title == "PR 42"
+    assert event.url == "https://github.com/JamesTurland/JimsGarage/pull/42#r1"
+    assert event.author_login == "rev"
+    assert event.key == "review:42:1"
+    assert event.is_pr is True
+
+
+@async_test
+async def test_derive_review_empty_prs(monitor: GitHubMonitor) -> None:
+    fetch = AsyncMock(return_value={})
+    with patch.object(monitor, "_fetch_pr_reviews", new=fetch):
+        assert await monitor._derive_review_events([]) == []
+    fetch.assert_not_awaited()
+
+
+@async_test
+@pytest.mark.parametrize("bad_state", ["PENDING", "DISMISSED", "WAT"])
+async def test_derive_review_ignores_unmapped_state(
+    monitor: GitHubMonitor, bad_state: str
+) -> None:
+    with patch.object(
+        monitor,
+        "_fetch_pr_reviews",
+        new=AsyncMock(return_value={42: [_review_node(state=bad_state)]}),
+    ):
+        assert await monitor._derive_review_events([_open_pr(42)]) == []
+
+
+@async_test
+async def test_derive_review_default_off_suppressed(
+    monitor: GitHubMonitor,
+) -> None:
+    # Real config.yaml defaults PR_REVIEW_APPROVED false.
+    with patch.object(
+        monitor,
+        "_fetch_pr_reviews",
+        new=AsyncMock(return_value={42: [_review_node(state="APPROVED")]}),
+    ):
+        assert await monitor._derive_review_events([_open_pr(42)]) == []
+
+
+@async_test
+async def test_derive_review_toggle_on_posts(
+    monitor: GitHubMonitor, mock_config: MagicMock
+) -> None:
+    mock_config.GITHUB.EVENTS.PR_REVIEW_APPROVED = True
+    with patch.object(
+        monitor,
+        "_fetch_pr_reviews",
+        new=AsyncMock(
+            return_value={42: [_review_node(state="APPROVED", database_id=7)]}
+        ),
+    ):
+        events = await monitor._derive_review_events([_open_pr(42)])
+    assert [e.kind for e in events] == ["PR_REVIEW_APPROVED"]
+
+
+@async_test
+async def test_derive_review_before_startup_ignored(
+    monitor: GitHubMonitor,
+) -> None:
+    with patch.object(
+        monitor,
+        "_fetch_pr_reviews",
+        new=AsyncMock(return_value={42: [_review_node(submitted_at=BEFORE)]}),
+    ):
+        assert await monitor._derive_review_events([_open_pr(42)]) == []
+
+
+@async_test
+async def test_derive_review_unparseable_submitted_ignored(
+    monitor: GitHubMonitor,
+) -> None:
+    with patch.object(
+        monitor,
+        "_fetch_pr_reviews",
+        new=AsyncMock(return_value={42: [_review_node(submitted_at="")]}),
+    ):
+        assert await monitor._derive_review_events([_open_pr(42)]) == []
+
+
+@async_test
+async def test_derive_review_dedup_across_polls(monitor: GitHubMonitor) -> None:
+    with patch.object(
+        monitor,
+        "_fetch_pr_reviews",
+        new=AsyncMock(return_value={42: [_review_node(database_id=1)]}),
+    ):
+        first = await monitor._derive_review_events([_open_pr(42)])
+        second = await monitor._derive_review_events([_open_pr(42)])
+    assert len(first) == 1
+    assert second == []
+
+
+@async_test
+async def test_derive_review_two_same_kind_distinct(
+    monitor: GitHubMonitor,
+) -> None:
+    with patch.object(
+        monitor,
+        "_fetch_pr_reviews",
+        new=AsyncMock(
+            return_value={
+                42: [_review_node(database_id=1), _review_node(database_id=2)]
+            }
+        ),
+    ):
+        events = await monitor._derive_review_events([_open_pr(42)])
+    assert {e.key for e in events} == {"review:42:1", "review:42:2"}
