@@ -22,11 +22,27 @@ EVENT_RENDER: dict[str, tuple[str, int, str]] = {
     "PR_OPENED": ("🟢", 0x2ECC71, "New PR"),
     "PR_MERGED": ("🟣", 0x9B59B6, "PR merged"),
     "PR_CLOSED": ("🔴", 0xE74C3C, "PR closed"),
+    "PR_REVIEW_CHANGES_REQUESTED": ("🟠", 0xE67E22, "Changes requested on"),
+    "PR_REVIEW_APPROVED": ("✅", 0x2ECC71, "Approved"),
+    "PR_REVIEW_COMMENTED": ("💬", 0x95A5A6, "Reviewed"),
 }
 
 _ISSUE_CLOSE_KINDS: frozenset[str] = frozenset({"ISSUE_COMPLETED", "ISSUE_NOT_PLANNED"})
 _PR_CLOSE_KINDS: frozenset[str] = frozenset({"PR_MERGED", "PR_CLOSED"})
 CLOSE_KINDS: frozenset[str] = _ISSUE_CLOSE_KINDS | _PR_CLOSE_KINDS
+_PR_REVIEW_KINDS: frozenset[str] = frozenset(
+    {
+        "PR_REVIEW_CHANGES_REQUESTED",
+        "PR_REVIEW_APPROVED",
+        "PR_REVIEW_COMMENTED",
+    }
+)
+_REVIEW_STATE_TO_KIND: dict[str, str] = {
+    "CHANGES_REQUESTED": "PR_REVIEW_CHANGES_REQUESTED",
+    "APPROVED": "PR_REVIEW_APPROVED",
+    "COMMENTED": "PR_REVIEW_COMMENTED",
+}
+_REVIEWS_PER_PR: int = 50
 _CLOSED_ACTOR_FRAGMENT: str = (
     "timelineItems(itemTypes:[CLOSED_EVENT],last:1)"
     "{nodes{... on ClosedEvent{actor{login avatarUrl}}}}"

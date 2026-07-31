@@ -21,6 +21,9 @@ GITHUB:
     PR_CLOSED: true
     PR_MERGED: true
     PR_OPENED: true
+    PR_REVIEW_APPROVED: false
+    PR_REVIEW_CHANGES_REQUESTED: true
+    PR_REVIEW_COMMENTED: false
   POLL_MINUTES: 5
   REPO: "JamesTurland/JimsGarage"
   TOKEN:                       # overridden by env GITHUB_TOKEN

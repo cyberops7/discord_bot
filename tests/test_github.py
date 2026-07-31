@@ -9,6 +9,9 @@ import aiohttp
 import pytest
 
 from lib.github import (
+    _PR_REVIEW_KINDS,
+    _REVIEW_STATE_TO_KIND,
+    _REVIEWS_PER_PR,
     EVENT_RENDER,
     GitHubActivityEvent,
     GitHubIssue,
@@ -154,7 +157,23 @@ def test_event_render_covers_all_kinds() -> None:
         "PR_OPENED",
         "PR_MERGED",
         "PR_CLOSED",
+        "PR_REVIEW_CHANGES_REQUESTED",
+        "PR_REVIEW_APPROVED",
+        "PR_REVIEW_COMMENTED",
     }
+
+
+def test_review_kinds_have_render_metadata() -> None:
+    assert set(EVENT_RENDER) >= _PR_REVIEW_KINDS
+
+
+def test_review_state_to_kind_mapping() -> None:
+    assert _REVIEW_STATE_TO_KIND == {
+        "CHANGES_REQUESTED": "PR_REVIEW_CHANGES_REQUESTED",
+        "APPROVED": "PR_REVIEW_APPROVED",
+        "COMMENTED": "PR_REVIEW_COMMENTED",
+    }
+    assert _REVIEWS_PER_PR == 50
 
 
 def test_make_event_missing_user(monitor: GitHubMonitor) -> None:
